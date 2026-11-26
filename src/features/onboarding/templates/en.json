@@ -1,0 +1,110 @@
+{
+  "ingredients": [
+    {
+      "id": "rice",
+      "name": "Rice",
+      "purchase": {
+        "metric": { "quantity": "1", "unit": "kg" },
+        "us": { "quantity": "2", "unit": "lb" }
+      },
+      "recipeUsage": {
+        "metric": { "quantity": "150", "unit": "g" },
+        "us": { "quantity": "5", "unit": "oz" }
+      }
+    },
+    {
+      "id": "chicken",
+      "name": "Chicken",
+      "purchase": {
+        "metric": { "quantity": "1", "unit": "kg" },
+        "us": { "quantity": "2", "unit": "lb" }
+      },
+      "recipeUsage": {
+        "metric": { "quantity": "100", "unit": "g" },
+        "us": { "quantity": "3.5", "unit": "oz" }
+      }
+    },
+    {
+      "id": "onion",
+      "name": "Onion",
+      "purchase": {
+        "metric": { "quantity": "1", "unit": "kg" },
+        "us": { "quantity": "2", "unit": "lb" }
+      },
+      "recipeUsage": {
+        "metric": { "quantity": "20", "unit": "g" },
+        "us": { "quantity": "0.7", "unit": "oz" }
+      }
+    },
+    {
+      "id": "cooking-oil",
+      "name": "Cooking oil",
+      "purchase": {
+        "metric": { "quantity": "1", "unit": "L" },
+        "us": { "quantity": "32", "unit": "fl oz" }
+      },
+      "recipeUsage": {
+        "metric": { "quantity": "10", "unit": "ml" },
+        "us": { "quantity": "0.34", "unit": "fl oz" }
+      }
+    },
+    {
+      "id": "eggs",
+      "name": "Eggs",
+      "purchase": {
+        "metric": { "quantity": "12", "unit": "piece" },
+        "us": { "quantity": "12", "unit": "piece" }
+      },
+      "recipeUsage": {
+        "metric": { "quantity": "1", "unit": "piece" },
+        "us": { "quantity": "1", "unit": "piece" }
+      }
+    },
+    {
+      "id": "flour",
+      "name": "All-purpose flour",
+      "purchase": {
+        "metric": { "quantity": "1", "unit": "kg" },
+        "us": { "quantity": "2", "unit": "lb" }
+      },
+      "recipeUsage": {
+        "metric": { "quantity": "100", "unit": "g" },
+        "us": { "quantity": "3.5", "unit": "oz" }
+      }
+    }
+  ],
+  "packaging": [
+    { "id": "takeaway-container", "name": "Takeaway container" },
+    { "id": "drink-cup", "name": "Drink cup" }
+  ],
+  "channels": [
+    {
+      "id": "dine-in",
+      "name": "Dine-in",
+      "commissionPct": "0",
+      "paymentFeePct": "0",
+      "isDefault": true
+    },
+    {
+      "id": "takeaway",
+      "name": "Takeaway",
+      "commissionPct": "0",
+      "paymentFeePct": "0",
+      "isDefault": true
+    },
+    {
+      "id": "delivery-app",
+      "name": "Delivery app",
+      "commissionPct": "0",
+      "paymentFeePct": "0",
+      "isDefault": true
+    },
+    {
+      "id": "online-order",
+      "name": "Online order",
+      "commissionPct": "0",
+      "paymentFeePct": "0",
+      "isDefault": true
+    }
+  ]
+}

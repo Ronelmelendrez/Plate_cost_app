@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -151,6 +151,25 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       await db.execAsync(`
         ALTER TABLE global_settings ADD COLUMN rounding_rule TEXT NOT NULL DEFAULT 'auto';
         PRAGMA user_version = 4;
+      `);
+    });
+    currentVersion = 4;
+  }
+
+  if (currentVersion < 5) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE global_settings
+          ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0;
+        UPDATE global_settings
+          SET onboarding_completed = CASE
+            WHEN EXISTS (SELECT 1 FROM ingredients)
+              OR EXISTS (SELECT 1 FROM recipes)
+            THEN 1
+            ELSE 0
+          END
+          WHERE id = 1;
+        PRAGMA user_version = 5;
       `);
     });
   }

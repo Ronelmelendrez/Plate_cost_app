@@ -1,3 +1,5 @@
+import { eq } from 'drizzle-orm';
+
 import type { AppDatabase } from '@core/db/client';
 import {
   channels,
@@ -157,6 +159,17 @@ export async function mergeBackup(
           .onConflictDoNothing()
           .returning({ id: recipeChannelPrices.id })
       : [];
+
+    if (insertedRecipes.length > 0) {
+      const [updatedSettings] = await transaction
+        .update(globalSettings)
+        .set({ onboardingCompleted: true })
+        .where(eq(globalSettings.id, 1))
+        .returning({ id: globalSettings.id });
+      if (!updatedSettings) {
+        throw new Error('Onboarding status could not be updated after backup restore.');
+      }
+    }
 
     return {
       addedCount:

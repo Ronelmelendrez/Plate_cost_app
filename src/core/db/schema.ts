@@ -128,6 +128,9 @@ export const globalSettings = sqliteTable('global_settings', {
     .notNull()
     .default('auto'),
   isInitialized: integer('is_initialized', { mode: 'boolean' }).notNull().default(false),
+  onboardingCompleted: integer('onboarding_completed', { mode: 'boolean' })
+    .notNull()
+    .default(false),
 });
 
 export const channels = sqliteTable(
