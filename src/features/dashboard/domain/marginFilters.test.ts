@@ -1,7 +1,7 @@
 import { Decimal } from 'decimal.js';
 import { describe, expect, it } from 'vitest';
 
-import { filterMarginDashboardRows } from './marginFilters';
+import { filterMarginDashboardRows, searchMarginDashboardRows } from './marginFilters';
 import type { MarginDashboardRow } from './marginDashboard';
 
 const rows: MarginDashboardRow[] = [
@@ -18,5 +18,15 @@ describe('filterMarginDashboardRows', () => {
   it('uses the selected target as the exact boundary and omits unpriced dishes', () => {
     expect(filterMarginDashboardRows(rows, 'below-target', new Decimal(65))).toEqual([rows[0]]);
     expect(filterMarginDashboardRows(rows, 'target-met', new Decimal(65))).toEqual([rows[1]]);
+  });
+});
+
+describe('searchMarginDashboardRows', () => {
+  it('trims and matches dish names without case sensitivity', () => {
+    expect(searchMarginDashboardRows(rows, '  bElOw  ', 'en-US')).toEqual([rows[0]]);
+  });
+
+  it('returns all rows for a blank query', () => {
+    expect(searchMarginDashboardRows(rows, '  ', 'en-US')).toEqual(rows);
   });
 });

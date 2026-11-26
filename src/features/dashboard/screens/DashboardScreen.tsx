@@ -18,6 +18,7 @@ import {
   snoozeBackupReminder,
 } from '@features/backup';
 import { getRecipeWorkspace } from '@features/recipes';
+import { DashboardHeader } from '@features/dashboard/components/DashboardHeader';
 import { MarginDishRow } from '@features/dashboard/components/MarginDishRow';
 import {
   buildMarginDashboardRows,
@@ -26,6 +27,7 @@ import {
 } from '@features/dashboard/domain/marginDashboard';
 import {
   filterMarginDashboardRows,
+  searchMarginDashboardRows,
   type MarginDashboardFilter,
 } from '@features/dashboard/domain/marginFilters';
 import { saveTargetMargin, type AppSettings } from '@features/settings';
@@ -42,6 +44,7 @@ export default function DashboardScreen() {
   const [settings, setSettings] = useState<AppSettings>();
   const [selectedChannelId, setSelectedChannelId] = useState('');
   const [marginFilter, setMarginFilter] = useState<MarginDashboardFilter>('all');
+  const [query, setQuery] = useState('');
   const [targetMargin, setTargetMargin] = useState(65);
   const [savedTargetMargin, setSavedTargetMargin] = useState(65);
   const [isLoading, setIsLoading] = useState(true);
@@ -90,6 +93,7 @@ export default function DashboardScreen() {
   const fractionDigits = settings
     ? currencyFractionDigits(settings.currencyCode, settings.locale)
     : 2;
+  const locale = settings?.locale ?? 'en-US';
   const rowResult = useMemo(() => {
     if (!workspace || !selectedChannelId) {
       return { rows: [], error: '' };
@@ -107,12 +111,21 @@ export default function DashboardScreen() {
     }
   }, [fractionDigits, selectedChannelId, t, workspace]);
   const rows = rowResult.rows;
+  const searchedRows = searchMarginDashboardRows(rows, query, locale);
+  const searchedPricedRows = searchedRows.filter((row) => row.marginPct !== undefined);
+  const searchBelowTargetCount = searchedPricedRows.filter((row) =>
+    row.marginPct?.lt(targetMargin),
+  ).length;
+  const searchTargetMetCount = searchedPricedRows.length - searchBelowTargetCount;
   const pricedRows = rows.filter((row) => row.marginPct !== undefined);
   const belowTargetCount = pricedRows.filter((row) =>
     row.marginPct?.lt(targetMargin),
   ).length;
-  const targetMetCount = pricedRows.length - belowTargetCount;
-  const visibleRows = filterMarginDashboardRows(rows, marginFilter, new Decimal(targetMargin));
+  const visibleRows = filterMarginDashboardRows(
+    searchedRows,
+    marginFilter,
+    new Decimal(targetMargin),
+  );
   const targetMarginLabel = new Intl.NumberFormat(settings?.locale ?? 'en-US', {
     style: 'percent',
     maximumFractionDigits: 1,
@@ -141,7 +154,6 @@ export default function DashboardScreen() {
   const dishCount = workspace?.recipes.filter((recipe) => !recipe.isSubRecipe).length ?? 0;
   const backupReminderKind = settings ? getBackupReminderKind(settings, dishCount) : null;
   const currency = settings?.currencyCode ?? 'USD';
-  const locale = settings?.locale ?? 'en-US';
 
   const createReminderBackup = async () => {
     setIsBackupBusy(true);
@@ -189,8 +201,10 @@ export default function DashboardScreen() {
 
   const dashboardHeader = (
     <View>
-      <View className="gap-1 px-4 pb-4 pt-3">
-        <Text className="text-2xl font-bold text-ink">{t('dashboard.title')}</Text>
+      <View className="gap-1 px-4 pb-4 pt-5">
+        <Text accessibilityRole="header" className="text-2xl font-bold text-ink">
+          {t('dashboard.title')}
+        </Text>
         <Text className="text-base leading-6 text-muted">{t('dashboard.subtitle')}</Text>
       </View>
 
@@ -338,16 +352,16 @@ export default function DashboardScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerClassName="gap-2">
             {([
-              { id: 'all', label: t('dashboard.filterAll'), count: rows.length },
+              { id: 'all', label: t('dashboard.filterAll'), count: searchedRows.length },
               {
                 id: 'below-target',
                 label: t('dashboard.filterBelowTarget'),
-                count: belowTargetCount,
+                count: searchBelowTargetCount,
               },
               {
                 id: 'target-met',
                 label: t('dashboard.filterTargetMet'),
-                count: targetMetCount,
+                count: searchTargetMetCount,
               },
             ] satisfies { id: MarginDashboardFilter; label: string; count: number }[]).map(
               (filter) => {
@@ -395,9 +409,12 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
+      <DashboardHeader query={query} onChangeQuery={setQuery} />
       <FlashList
         data={visibleRows}
         keyExtractor={(item) => item.recipeId}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         ListHeaderComponent={dashboardHeader}
         renderItem={({ item }) => (
           <View className="px-4">
@@ -421,6 +438,21 @@ export default function DashboardScreen() {
               <Text className="text-center text-base leading-6 text-muted">
                 {t('dashboard.emptyBody')}
               </Text>
+            </View>
+          ) : query.trim() && searchedRows.length === 0 ? (
+            <View className="items-center gap-2 px-4 py-8">
+              <Text className="text-center text-base text-muted">
+                {t('dashboard.searchNoResults')}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('dashboard.clearSearch')}
+                onPress={() => setQuery('')}
+                className="min-h-12 justify-center">
+                <Text className="text-base font-semibold text-brand">
+                  {t('dashboard.clearSearch')}
+                </Text>
+              </Pressable>
             </View>
           ) : marginFilter !== 'all' ? (
             <View className="items-center gap-2 px-4 py-8">

@@ -73,6 +73,9 @@ export const en = {
   dashboard: {
     title: 'Margins',
     subtitle: 'See how each dish performs across your sales channels.',
+    searchDishes: 'Search dishes',
+    clearSearch: 'Clear search',
+    searchNoResults: 'No dishes match that search.',
     channelHint: 'Choose a channel to compare the price, profit, and margin.',
     targetMarginHint: 'Set your goal and see which dishes fall short.',
     targetMargin: 'Target margin',
