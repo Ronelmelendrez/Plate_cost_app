@@ -1,0 +1,11 @@
+{
+  "bg": "#FAF8F5",
+  "surface": "#FFFFFF",
+  "ink": "#1F1B16",
+  "muted": "#6B645B",
+  "line": "#E7E2DA",
+  "brand": "#1F6F5C",
+  "good": "#1E7A3E",
+  "warn": "#B26A00",
+  "bad": "#C0392B"
+}
