@@ -1,7 +1,13 @@
 import { relations, sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-import { BASE_UNITS, CONVERSION_UNITS, PURCHASE_UNITS } from '@core/costing/units';
+import {
+  BASE_UNITS,
+  CONVERSION_UNITS,
+  PURCHASE_UNITS,
+  RECIPE_UNITS,
+  RECIPE_YIELD_UNITS,
+} from '@core/costing/units';
 
 const uuidDefault = sql`(lower(hex(randomblob(16))))`;
 
@@ -50,9 +56,79 @@ export const ingredientPriceHistory = sqliteTable(
   (table) => [index('ingredient_price_history_ingredient_idx').on(table.ingredientId, table.recordedAt)],
 );
 
+export const recipes = sqliteTable(
+  'recipes',
+  {
+    id: text('id').primaryKey().notNull().default(uuidDefault),
+    name: text('name').notNull(),
+    portions: integer('portions').notNull().default(1),
+    batchYieldQuantity: text('batch_yield_quantity').notNull().default('1'),
+    batchYieldUnit: text('batch_yield_unit', { enum: [...RECIPE_YIELD_UNITS] })
+      .notNull()
+      .default('portion'),
+    isSubRecipe: integer('is_sub_recipe', { mode: 'boolean' }).notNull().default(false),
+    sellingPriceMinor: integer('selling_price_minor'),
+    notes: text('notes'),
+    laborMinutes: text('labor_minutes').notNull().default('0'),
+    laborRateMinor: integer('labor_rate_minor').notNull().default(0),
+    overheadMode: text('overhead_mode', { enum: ['none', 'flat', 'percent'] })
+      .notNull()
+      .default('none'),
+    overheadValue: text('overhead_value').notNull().default('0'),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('recipes_name_idx').on(table.name)],
+);
+
+export const packagingItems = sqliteTable(
+  'packaging_items',
+  {
+    id: text('id').primaryKey().notNull().default(uuidDefault),
+    name: text('name').notNull(),
+    costMinor: integer('cost_minor').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('packaging_items_name_idx').on(table.name)],
+);
+
+export const recipeItems = sqliteTable(
+  'recipe_items',
+  {
+    id: text('id').primaryKey().notNull().default(uuidDefault),
+    recipeId: text('recipe_id')
+      .notNull()
+      .references(() => recipes.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['ingredient', 'recipe', 'packaging'] }).notNull(),
+    referenceId: text('reference_id').notNull(),
+    quantity: text('quantity').notNull(),
+    unit: text('unit', { enum: [...RECIPE_UNITS] }).notNull(),
+  },
+  (table) => [
+    index('recipe_items_recipe_idx').on(table.recipeId),
+    index('recipe_items_reference_idx').on(table.kind, table.referenceId),
+  ],
+);
+
+export const globalSettings = sqliteTable('global_settings', {
+  id: integer('id').primaryKey().notNull().default(1),
+  wastePct: text('waste_pct').notNull().default('5'),
+});
+
 export const ingredientRelations = relations(ingredients, ({ many }) => ({
   conversions: many(unitConversions),
   priceHistory: many(ingredientPriceHistory),
+  recipeItems: many(recipeItems),
+}));
+
+export const recipeRelations = relations(recipes, ({ many }) => ({
+  items: many(recipeItems),
+}));
+
+export const recipeItemRelations = relations(recipeItems, ({ one }) => ({
+  recipe: one(recipes, {
+    fields: [recipeItems.recipeId],
+    references: [recipes.id],
+  }),
 }));
 
 export const ingredientPriceHistoryRelations = relations(ingredientPriceHistory, ({ one }) => ({
@@ -76,4 +152,10 @@ export const schema = {
   unitConversionRelations,
   ingredientPriceHistory,
   ingredientPriceHistoryRelations,
+  recipes,
+  recipeRelations,
+  recipeItems,
+  recipeItemRelations,
+  packagingItems,
+  globalSettings,
 };
