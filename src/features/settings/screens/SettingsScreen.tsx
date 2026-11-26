@@ -8,6 +8,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { createDrizzleClient } from '@core/db/client';
 import { currencyFractionDigits, formatDecimalInput } from '@core/costing/money';
 import {
+  BackupValidationError,
+  pickAndMergeBackup,
+  shareBackupFile,
+  SharingUnavailableError,
+} from '@features/backup';
+import {
   getAvailableRoundingRules,
   getDefaultRoundingRule,
 } from '@core/costing/suggestedPrice';
@@ -39,6 +45,9 @@ export default function SettingsScreen() {
   const [loadError, setLoadError] = useState('');
   const [formError, setFormError] = useState('');
   const [isSaved, setIsSaved] = useState(false);
+  const [backupError, setBackupError] = useState('');
+  const [backupMessage, setBackupMessage] = useState('');
+  const [isBackupBusy, setIsBackupBusy] = useState(false);
 
   const loadSettings = useCallback(async () => {
     setLoadError('');
@@ -151,6 +160,48 @@ export default function SettingsScreen() {
       setFormError(t('settings.saveError'));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleBackupExport = async () => {
+    setIsBackupBusy(true);
+    setBackupError('');
+    setBackupMessage('');
+    try {
+      await shareBackupFile(database, t('settings.backupShareTitle'));
+      setBackupMessage(t('settings.backupCreated'));
+    } catch (error) {
+      console.error('Unable to create or share a backup.', error);
+      setBackupError(
+        error instanceof SharingUnavailableError
+          ? t('settings.sharingUnavailable')
+          : t('settings.backupExportError'),
+      );
+    } finally {
+      setIsBackupBusy(false);
+    }
+  };
+
+  const handleBackupImport = async () => {
+    setIsBackupBusy(true);
+    setBackupError('');
+    setBackupMessage('');
+    try {
+      const result = await pickAndMergeBackup(database);
+      if (!result) {
+        return;
+      }
+      setBackupMessage(t('settings.backupMerged', { count: result.addedCount }));
+      await loadSettings();
+    } catch (error) {
+      console.error('Unable to merge the selected backup.', error);
+      setBackupError(
+        error instanceof BackupValidationError
+          ? t('settings.backupInvalid')
+          : t('settings.backupImportError'),
+      );
+    } finally {
+      setIsBackupBusy(false);
     }
   };
 
@@ -432,6 +483,38 @@ export default function SettingsScreen() {
                   {t('settings.addChannel')}
                 </Text>
               </Pressable>
+            </View>
+            <View className="gap-3 border-t border-line pt-4">
+              <View className="gap-1">
+                <Text className="text-base font-semibold text-ink">
+                  {t('settings.backup')}
+                </Text>
+                <Text className="text-sm leading-6 text-muted">
+                  {t('settings.backupHelp')}
+                </Text>
+              </View>
+              {backupError ? (
+                <Text accessibilityRole="alert" className="text-sm text-bad">
+                  {backupError}
+                </Text>
+              ) : null}
+              {backupMessage ? (
+                <Text accessibilityRole="summary" className="text-sm font-semibold text-good">
+                  {backupMessage}
+                </Text>
+              ) : null}
+              <Button
+                label={t('settings.createBackup')}
+                variant="secondary"
+                onPress={() => void handleBackupExport()}
+                disabled={!isReady || isBackupBusy}
+              />
+              <Button
+                label={t('settings.mergeBackup')}
+                variant="secondary"
+                onPress={() => void handleBackupImport()}
+                disabled={!isReady || isBackupBusy}
+              />
             </View>
             <Text className="text-sm leading-6 text-muted">{t('settings.legalNote')}</Text>
           </ScrollView>

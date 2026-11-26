@@ -85,6 +85,7 @@ Small food businesses worldwide (cafés, bakeries, street food stalls, small res
 ### F7. Backup and Export
 
 - One-tap backup to a JSON file (share to Drive, WhatsApp, etc.) and restore from file.
+- Restore merges non-conflicting records. Existing records and current settings win conflicts; recipe items and channel prices are added only for new dishes, and unit conversions only for new ingredients.
 - Export a recipe cost sheet as PDF.
 
 ### F8. First-run Onboarding

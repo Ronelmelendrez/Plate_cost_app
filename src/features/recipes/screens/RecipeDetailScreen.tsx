@@ -25,6 +25,7 @@ import {
 import {
   currencyAffixes,
   currencyFractionDigits,
+  formatCurrency,
   formatDecimalInput,
   parseDecimal,
   toMinorUnits,
@@ -38,6 +39,11 @@ import {
 import { calculateChannelPricing } from '@core/costing/channelPricing';
 import type { RecipeEdge } from '@core/costing/cycleCheck';
 import { createDrizzleClient } from '@core/db/client';
+import {
+  buildRecipeCostSheetHtml,
+  sharePdfFile,
+  SharingUnavailableError,
+} from '@features/backup';
 import type { Ingredient } from '@features/ingredients/data/ingredientRepository';
 import {
   getRecipeEditorData,
@@ -126,6 +132,8 @@ export default function RecipeDetailScreen() {
   const [formError, setFormError] = useState('');
   const [isLoadError, setIsLoadError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState('');
   const [isReady, setIsReady] = useState(false);
   const [removedItem, setRemovedItem] = useState<RecipeItemDraft>();
   const [impactReport, setImpactReport] = useState<PriceChangeImpactReport | null>(null);
@@ -557,6 +565,90 @@ export default function RecipeDetailScreen() {
     setRemovedItem(item);
   };
 
+  const exportCostSheet = async () => {
+    setIsExportingPdf(true);
+    setPdfError('');
+    try {
+      const data = await getRecipeEditorData(database, id, fractionDigits);
+      if (!data || data.recipe.isSubRecipe) {
+        throw new Error('A saved dish is required to export a cost sheet.');
+      }
+
+      const channelRows = data.channelPrices.flatMap((price) => {
+        const channel = data.channels.find((candidate) => candidate.id === price.channelId);
+        if (!channel) {
+          return [];
+        }
+        const pricing = calculateChannelPricing({
+          costPerPortion: data.cost.costPerPortion,
+          priceMinor: price.priceMinor,
+          fractionDigits,
+          commissionPct: channel.commissionPct,
+          paymentFeePct: channel.paymentFeePct,
+          pricesIncludeTax: data.settings.pricesIncludeTax,
+          taxPct: data.settings.taxPct,
+          feesOnTaxIncludedPrice: data.settings.feesOnTaxIncludedPrice,
+        });
+        return [
+          {
+            name: channel.name,
+            price: formatCurrency(pricing.grossPrice, currency, locale),
+            fees: formatCurrency(pricing.fees, currency, locale),
+            profit: formatCurrency(pricing.profit, currency, locale),
+            margin: `${new Intl.NumberFormat(locale, {
+              maximumFractionDigits: 1,
+            }).format(pricing.marginPct.toNumber())}%`,
+          },
+        ];
+      });
+
+      const html = buildRecipeCostSheetHtml({
+        locale,
+        recipeName: data.recipe.name,
+        generatedAt: new Intl.DateTimeFormat(locale, {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(new Date()),
+        portions: t('pricing.portionCount', { count: data.recipe.portions }),
+        batchCost: formatCurrency(data.cost.batchCost, currency, locale),
+        costPerPlate: formatCurrency(data.cost.costPerPortion, currency, locale),
+        breakdown: data.cost.breakdown.map((line) => ({
+          name: line.name,
+          quantity: line.quantity,
+          unit: t(`units.${line.unit}`),
+          cost: formatCurrency(line.costPerPortion, currency, locale),
+        })),
+        channels: channelRows,
+        labels: {
+          generated: t('pricing.generatedAt'),
+          portions: t('recipes.portions'),
+          batchCost: t('recipes.costPerBatch'),
+          costPerPlate: t('recipes.costPerPortion'),
+          costBreakdown: t('pricing.costBreakdown'),
+          item: t('pricing.item'),
+          quantity: t('pricing.quantity'),
+          cost: t('pricing.cost'),
+          salesChannels: t('pricing.salesChannels'),
+          channel: t('pricing.channel'),
+          price: t('pricing.price'),
+          fees: t('pricing.fees'),
+          profit: t('pricing.profitPerPlate'),
+          margin: t('pricing.margin'),
+        },
+      });
+      await sharePdfFile(html, t('pricing.pdfShareTitle'));
+    } catch (error) {
+      console.error('Unable to create or share recipe cost sheet.', error);
+      setPdfError(
+        error instanceof SharingUnavailableError
+          ? t('pricing.pdfShareError')
+          : t('pricing.pdfError'),
+      );
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   const undoRemoveDraftItem = () => {
     if (!removedItem) {
       return;
@@ -957,6 +1049,9 @@ export default function RecipeDetailScreen() {
         profitPerPortion={profitPerPortion}
         profitChannelName={previewChannel?.channel?.name}
         recipeId={!isNew && !isSubRecipe ? id : undefined}
+        isExportingPdf={isExportingPdf}
+        pdfError={pdfError}
+        onExportPdf={() => void exportCostSheet()}
         isSubRecipe={isSubRecipe}
         error={costPreview.error}
         currency={currency}

@@ -11,6 +11,9 @@ interface RecipeCostSummaryProps {
   profitPerPortion?: Decimal;
   profitChannelName?: string;
   recipeId?: string;
+  isExportingPdf?: boolean;
+  pdfError?: string;
+  onExportPdf?: () => void;
   isSubRecipe: boolean;
   error?: string;
   currency: string;
@@ -23,6 +26,9 @@ export function RecipeCostSummary({
   profitPerPortion,
   profitChannelName,
   recipeId,
+  isExportingPdf = false,
+  pdfError,
+  onExportPdf,
   isSubRecipe,
   error,
   currency,
@@ -58,6 +64,11 @@ export function RecipeCostSummary({
           {isSubRecipe ? t('recipes.addItemsForBatchCost') : t('recipes.addItemsForCost')}
         </Text>
       )}
+      {pdfError ? (
+        <Text accessibilityRole="alert" className="text-sm text-bad">
+          {pdfError}
+        </Text>
+      ) : null}
       {!isSubRecipe && profitPerPortion ? (
         <Text className="text-sm font-semibold text-ink">
           {t('recipes.profitPerPortionForChannel', {
@@ -68,15 +79,29 @@ export function RecipeCostSummary({
         </Text>
       ) : null}
       {!isSubRecipe && recipeId ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('pricing.openWhatIf')}
-          onPress={() => router.push(`/recipe/${recipeId}/price`)}
-          className="min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4">
-          <Text className="text-base font-semibold text-brand">
-            {t('pricing.openWhatIf')}
-          </Text>
-        </Pressable>
+        <View className="gap-2">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('pricing.openWhatIf')}
+            onPress={() => router.push(`/recipe/${recipeId}/price`)}
+            className="min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4">
+            <Text className="text-base font-semibold text-brand">
+              {t('pricing.openWhatIf')}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('pricing.exportPdf')}
+            disabled={isExportingPdf}
+            onPress={onExportPdf}
+            className={`min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4 ${
+              isExportingPdf ? 'opacity-50' : ''
+            }`}>
+            <Text className="text-base font-semibold text-brand">
+              {t('pricing.exportPdf')}
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
     </View>
   );
