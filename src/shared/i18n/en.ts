@@ -72,6 +72,9 @@ export const en = {
   },
   dashboard: {
     title: 'Margins',
+    subtitle: 'See how each dish performs across your sales channels.',
+    channelHint: 'Choose a channel to compare the price, profit, and margin.',
+    targetMarginHint: 'Set your goal and see which dishes fall short.',
     targetMargin: 'Target margin',
     belowTargetSummary_one: '{{below}} of {{total}} priced dish below target',
     belowTargetSummary_other: '{{below}} of {{total}} priced dishes below target',
@@ -87,6 +90,7 @@ export const en = {
     notSoldHere: 'Not sold here',
     dishSummary:
       '{{name}}, price {{price}}, cost {{cost}}, profit per plate {{profit}}, margin {{margin}}, {{status}}.',
+    dishesHeading: 'Your dishes',
     emptyTitle: 'No dishes yet',
     emptyBody: 'Add your first dish and its ingredients to see the cost per plate.',
     addDish: 'Add dish',

@@ -182,43 +182,59 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
-      <View className="px-4 pb-3 pt-1">
-        <Text className="text-xl font-semibold text-ink">{t('dashboard.title')}</Text>
+      <View className="gap-1 px-4 pb-4 pt-3">
+        <Text className="text-2xl font-bold text-ink">{t('dashboard.title')}</Text>
+        <Text className="text-base leading-6 text-muted">{t('dashboard.subtitle')}</Text>
       </View>
 
       {workspace && workspace.channels.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerClassName="gap-2 px-4 pb-3">
-          {workspace.channels.map((channel) => {
-            const selected = channel.id === selectedChannelId;
-            return (
-              <Pressable
-                key={channel.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={t('dashboard.selectChannel', { name: channel.name })}
-                onPress={() => setSelectedChannelId(channel.id)}
-                className={`min-h-12 items-center justify-center rounded-full border px-4 ${
-                  selected ? 'border-brand bg-surface' : 'border-line bg-surface'
-                }`}>
-                <Text className={`text-base ${selected ? 'font-semibold text-brand' : 'text-ink'}`}>
-                  {channel.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <View className="mx-4 mb-3 gap-3 rounded-xl border border-line bg-surface p-4">
+          <View className="gap-1">
+            <Text className="text-base font-semibold text-ink">
+              {t('pricing.salesChannel')}
+            </Text>
+            <Text className="text-sm leading-5 text-muted">
+              {t('dashboard.channelHint')}
+            </Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="gap-2">
+            {workspace.channels.map((channel) => {
+              const selected = channel.id === selectedChannelId;
+              return (
+                <Pressable
+                  key={channel.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={t('dashboard.selectChannel', { name: channel.name })}
+                  onPress={() => setSelectedChannelId(channel.id)}
+                  className={`min-h-12 items-center justify-center rounded-full border px-4 ${
+                    selected ? 'border-brand bg-brand' : 'border-line bg-bg'
+                  }`}>
+                  <Text className={`text-base ${selected ? 'font-semibold text-white' : 'text-ink'}`}>
+                    {channel.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       ) : null}
 
       {workspace ? (
-        <View className="border-b border-line px-4 pb-2 pt-1">
+        <View className="mx-4 mb-4 gap-3 rounded-xl border border-line bg-surface p-4">
           <View className="flex-row items-center justify-between gap-3">
-            <Text className="text-base font-semibold text-ink">
-              {t('dashboard.targetMargin')}
-            </Text>
-            <Text className="text-base font-semibold text-ink">{targetMarginLabel}</Text>
+            <View className="flex-1 gap-1">
+              <Text className="text-base font-semibold text-ink">
+                {t('dashboard.targetMargin')}
+              </Text>
+              <Text className="text-sm leading-5 text-muted">
+                {t('dashboard.targetMarginHint')}
+              </Text>
+            </View>
+            <Text className="text-2xl font-bold text-brand">{targetMarginLabel}</Text>
           </View>
           <Slider
             accessibilityLabel={t('dashboard.targetMargin')}
@@ -232,19 +248,24 @@ export default function DashboardScreen() {
             minimumTrackTintColor={Colors.light.tint}
             maximumTrackTintColor={Colors.light.line}
             thumbTintColor={Colors.light.tint}
+            thumbSize={28}
             style={{ height: 48, width: '100%' }}
           />
-          {pricedRows.length > 0 ? (
-            <Text accessibilityRole="summary" className="text-sm text-muted">
-              {t('dashboard.belowTargetSummary', {
-                count: pricedRows.length,
-                below: belowTargetCount,
-                total: pricedRows.length,
-              })}
-            </Text>
-          ) : (
-            <Text className="text-sm text-muted">{t('dashboard.noPricedDishes')}</Text>
-          )}
+          <View className="rounded-xl bg-bg px-3 py-3">
+            {pricedRows.length > 0 ? (
+              <Text accessibilityRole="summary" className="text-sm leading-5 text-muted">
+                {t('dashboard.belowTargetSummary', {
+                  count: pricedRows.length,
+                  below: belowTargetCount,
+                  total: pricedRows.length,
+                })}
+              </Text>
+            ) : (
+              <Text className="text-sm leading-5 text-muted">
+                {t('dashboard.noPricedDishes')}
+              </Text>
+            )}
+          </View>
         </View>
       ) : null}
       {backupReminderKind ? (
@@ -303,6 +324,13 @@ export default function DashboardScreen() {
       <FlashList
         data={rows}
         keyExtractor={(item) => item.recipeId}
+        ListHeaderComponent={
+          dishCount > 0 ? (
+            <Text className="pb-3 pt-1 text-lg font-semibold text-ink">
+              {t('dashboard.dishesHeading')}
+            </Text>
+          ) : null
+        }
         renderItem={({ item }) => (
           <MarginDishRow
             row={item}
@@ -326,7 +354,11 @@ export default function DashboardScreen() {
             </View>
           ) : null
         }
-        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: 16,
+          paddingBottom: 16,
+        }}
         style={{ flex: 1 }}
       />
 

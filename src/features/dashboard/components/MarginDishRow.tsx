@@ -67,26 +67,26 @@ export function MarginDishRow({
         status: styles ? t(`dashboard.status.${styles.label}`) : t('dashboard.notSoldHere'),
       })}
       onPress={onPress}
-      className="min-h-20 border-b border-line py-3">
+      className="mb-3 min-h-20 rounded-xl border border-line bg-surface p-4">
       <View className="flex-row items-start justify-between gap-3">
-        <Text className="flex-1 text-base font-semibold text-ink">{row.name}</Text>
+        <Text className="flex-1 text-lg font-semibold text-ink">{row.name}</Text>
         {styles && margin ? (
-          <View className="flex-row items-center gap-1">
+          <View className="flex-row items-center gap-1 rounded-full bg-bg px-3 py-2">
             <SymbolView
               name={styles.icon}
               tintColor={styles.color}
-              size={20}
+              size={18}
             />
-            <Text style={{ color: styles.color }} className="text-sm font-semibold">
+            <Text style={{ color: styles.color }} className="text-xs font-semibold">
               {t(`dashboard.status.${styles.label}`)}
             </Text>
-            <Text className="ms-1 text-base font-semibold text-ink">{margin}</Text>
+            <Text className="ms-1 text-base font-bold text-ink">{margin}</Text>
           </View>
         ) : (
           <Text className="text-sm text-muted">{t('dashboard.notSoldHere')}</Text>
         )}
       </View>
-      <Text className="mt-1 text-base text-muted">
+      <Text className="mt-3 border-t border-line pt-3 text-sm leading-5 text-muted">
         {price && profit
           ? t('dashboard.priceCostProfit', { price, cost, profit })
           : t('dashboard.unpricedDishCost', { cost })}
