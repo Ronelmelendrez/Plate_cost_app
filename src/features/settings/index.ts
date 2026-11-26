@@ -4,6 +4,7 @@ export {
   getAppSettings,
   listSalesChannels,
   saveSettings,
+  saveTargetMargin,
   validateSettingsDraft,
 } from './data/settingsRepository';
 export type {

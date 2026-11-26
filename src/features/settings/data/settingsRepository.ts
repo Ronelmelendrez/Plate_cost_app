@@ -1,3 +1,4 @@
+import { Decimal } from 'decimal.js';
 import { getLocales } from 'expo-localization';
 import { asc, desc, eq } from 'drizzle-orm';
 
@@ -181,5 +182,28 @@ export async function saveSettings(
         await transaction.insert(channels).values(values);
       }
     }
+  });
+}
+
+export async function saveTargetMargin(database: AppDatabase, targetMarginPct: number) {
+  const targetMargin = new Decimal(targetMarginPct).toDecimalPlaces(1);
+  if (!targetMargin.isFinite() || targetMargin.lt(0) || targetMargin.gt(100)) {
+    throw new Error('Target margin must be a percentage from 0 to 100.');
+  }
+
+  await database.transaction(async (transaction) => {
+    const [existingSettings] = await transaction
+      .select({ id: globalSettings.id })
+      .from(globalSettings)
+      .where(eq(globalSettings.id, 1))
+      .limit(1);
+    if (!existingSettings) {
+      throw new Error('Global settings are missing from the database.');
+    }
+
+    await transaction
+      .update(globalSettings)
+      .set({ targetMarginPct: targetMargin.toString(), isInitialized: true })
+      .where(eq(globalSettings.id, 1));
   });
 }

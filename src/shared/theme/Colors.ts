@@ -9,6 +9,9 @@ export default {
     tabIconSelected: palette.brand,
     surface: palette.surface,
     line: palette.line,
+    good: palette.good,
+    warn: palette.warn,
+    bad: palette.bad,
   },
   dark: {
     text: palette.ink,
@@ -18,5 +21,8 @@ export default {
     tabIconSelected: palette.brand,
     surface: palette.surface,
     line: palette.line,
+    good: palette.good,
+    warn: palette.warn,
+    bad: palette.bad,
   },
 };
