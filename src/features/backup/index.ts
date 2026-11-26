@@ -5,7 +5,13 @@ export {
   shareBackupFile,
   sharePdfFile,
 } from './data/backupFiles';
-export { createBackup, mergeBackup } from './data/backupRepository';
+export {
+  createBackup,
+  mergeBackup,
+  recordBackupExport,
+  snoozeBackupReminder,
+} from './data/backupRepository';
+export { getBackupReminderKind } from './domain/backupReminder';
 export { buildRecipeCostSheetHtml } from './domain/recipeCostSheet';
 export { BackupValidationError, parseBackup, validateBackup } from './domain/backupFormat';
 export type {

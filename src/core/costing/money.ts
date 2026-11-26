@@ -1,5 +1,7 @@
 import { Decimal } from 'decimal.js';
 
+export const MAX_CURRENCY_FRACTION_DIGITS = 4;
+
 export function currencyFractionDigits(currency: string, locale: string) {
   return (
     new Intl.NumberFormat(locale, { style: 'currency', currency }).resolvedOptions()
@@ -26,17 +28,20 @@ export function parseDecimal(value: string, locale: string) {
     }
   } else if (commaIndex >= 0 || dotIndex >= 0) {
     const separator = commaIndex >= 0 ? ',' : '.';
-    const localeDecimalSeparator = new Intl.NumberFormat(locale)
-      .formatToParts(1.1)
-      .find((part) => part.type === 'decimal')?.value;
-    const decimalDigits = trimmed.length - trimmed.lastIndexOf(separator) - 1;
-    const isLocaleGrouping =
-      separator !== localeDecimalSeparator &&
-      decimalDigits === 3 &&
-      trimmed.lastIndexOf(separator) > 0;
-
-    if (isLocaleGrouping) {
-      normalized = trimmed.split(separator).join('');
+    const groups = trimmed.split(separator);
+    if (groups.length > 2) {
+      const localeDecimalSeparator = new Intl.NumberFormat(locale)
+        .formatToParts(1.1)
+        .find((part) => part.type === 'decimal')?.value;
+      const integerPart = groups[0].replace(/^-/, '');
+      const isGrouping =
+        separator !== localeDecimalSeparator &&
+        /^\d{1,3}$/.test(integerPart) &&
+        groups.slice(1).every((group) => /^\d{3}$/.test(group));
+      if (!isGrouping) {
+        return null;
+      }
+      normalized = groups.join('');
     } else {
       normalized = trimmed.replace(separator, '.');
     }
@@ -76,6 +81,13 @@ export function formatDecimalInput(value: string, locale: string) {
 }
 
 export function toMinorUnits(value: Decimal, fractionDigits: number) {
+  if (
+    !Number.isInteger(fractionDigits) ||
+    fractionDigits < 0 ||
+    fractionDigits > MAX_CURRENCY_FRACTION_DIGITS
+  ) {
+    return null;
+  }
   const scaled = value.mul(new Decimal(10).pow(fractionDigits));
   if (!scaled.isInteger()) {
     return null;

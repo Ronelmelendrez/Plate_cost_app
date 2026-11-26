@@ -131,6 +131,8 @@ export const globalSettings = sqliteTable('global_settings', {
   onboardingCompleted: integer('onboarding_completed', { mode: 'boolean' })
     .notNull()
     .default(false),
+  lastBackupAt: text('last_backup_at'),
+  backupReminderSnoozedUntil: text('backup_reminder_snoozed_until'),
 });
 
 export const channels = sqliteTable(

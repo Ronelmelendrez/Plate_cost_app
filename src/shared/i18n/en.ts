@@ -94,6 +94,14 @@ export const en = {
     loadError: 'Margins could not be loaded. Please try again.',
     targetSaveError: 'The target margin could not be saved. Move the slider to try again.',
     calculationError: 'Margins could not be calculated. Check the recipe and channel prices.',
+    backupReminderTitle: 'Protect your recipes',
+    backupReminder: {
+      first: 'You have saved your first dish. Create a backup so you have a copy if your phone is lost.',
+      weekly: 'It has been a week since your last backup. Create a fresh copy.',
+    },
+    createBackup: 'Create a backup',
+    remindBackupLater: 'Remind me next week',
+    backupReminderSaveError: 'The reminder could not be updated. Please try again.',
     retry: 'Try again',
   },
   ingredients: {
@@ -216,6 +224,7 @@ export const en = {
     backupInvalid: 'That file is not a valid PlateCost backup. Choose another JSON backup.',
     backupExportError: 'Backup could not be created. Please try again.',
     backupImportError: 'Backup could not be merged. No partial changes were kept.',
+    backupReminderSaveError: 'The backup was created, but its reminder could not be updated.',
     sharingUnavailable: 'File sharing is not available on this device.',
     legalNote:
       'Costs are estimates to help you price. They are not tax or accounting advice.',

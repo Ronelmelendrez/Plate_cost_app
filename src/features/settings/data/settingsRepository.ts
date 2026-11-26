@@ -3,6 +3,7 @@ import { getLocales } from 'expo-localization';
 import { asc, desc, eq } from 'drizzle-orm';
 
 import { parseDecimal } from '@core/costing/money';
+import { getRegionalMeasurementDefaults } from '@core/costing/regionalDefaults';
 import {
   getAvailableRoundingRules,
   getDefaultRoundingRule,
@@ -128,6 +129,10 @@ export async function getAppSettings(database: AppDatabase) {
   const measurementSystem = deviceLocale?.measurementSystem;
   const unitSystem =
     measurementSystem === 'us' || measurementSystem === 'uk' ? 'us' : 'metric';
+  const measurementDefaults = getRegionalMeasurementDefaults(
+    deviceLocale?.regionCode,
+    unitSystem,
+  );
   await database
     .update(globalSettings)
     .set({
@@ -137,8 +142,8 @@ export async function getAppSettings(database: AppDatabase) {
             locale,
             currencyCode,
             unitSystem,
-            cupMl: unitSystem === 'us' ? '240' : '250',
-            tablespoonMl: '15',
+            cupMl: measurementDefaults.cupMl,
+            tablespoonMl: measurementDefaults.tablespoonMl,
           }),
       roundingRule: getDefaultRoundingRule(currencyCode, locale),
       isInitialized: true,

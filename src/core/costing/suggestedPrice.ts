@@ -1,6 +1,10 @@
 import { Decimal } from 'decimal.js';
 
-import { currencyFractionDigits, toMinorUnits } from './money';
+import {
+  currencyFractionDigits,
+  MAX_CURRENCY_FRACTION_DIGITS,
+  toMinorUnits,
+} from './money';
 
 export const PRICE_ROUNDING_RULES = [
   'ending-zero',
@@ -54,7 +58,7 @@ export function roundPriceUp(
     price.isNegative() ||
     !Number.isInteger(fractionDigits) ||
     fractionDigits < 0 ||
-    fractionDigits > 3 ||
+    fractionDigits > MAX_CURRENCY_FRACTION_DIGITS ||
     !getAvailableRoundingRules(fractionDigits).includes(roundingRule)
   ) {
     throw new Error('The suggested price rounding rule is not valid for this currency.');
@@ -104,7 +108,7 @@ export function calculateSuggestedPrice(input: SuggestedPriceInput): SuggestedPr
   if (
     !Number.isInteger(fractionDigits) ||
     fractionDigits < 0 ||
-    fractionDigits > 3 ||
+    fractionDigits > MAX_CURRENCY_FRACTION_DIGITS ||
     !getAvailableRoundingRules(fractionDigits).includes(input.roundingRule)
   ) {
     throw new Error('The suggested price rounding rule is not valid for this currency.');

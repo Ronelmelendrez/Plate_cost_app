@@ -10,6 +10,7 @@ import { currencyFractionDigits, formatDecimalInput } from '@core/costing/money'
 import {
   BackupValidationError,
   pickAndMergeBackup,
+  recordBackupExport,
   shareBackupFile,
   SharingUnavailableError,
 } from '@features/backup';
@@ -170,6 +171,12 @@ export default function SettingsScreen() {
     try {
       await shareBackupFile(database, t('settings.backupShareTitle'));
       setBackupMessage(t('settings.backupCreated'));
+      try {
+        await recordBackupExport(database);
+      } catch (error) {
+        console.error('Unable to update the backup reminder after export.', error);
+        setBackupError(t('settings.backupReminderSaveError'));
+      }
     } catch (error) {
       console.error('Unable to create or share a backup.', error);
       setBackupError(

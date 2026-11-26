@@ -242,14 +242,20 @@ function computeRecipeCost(
     : yieldAmount;
   const costPerYieldUnit = batchCost.div(batchYieldInBaseUnits);
 
-  const breakdown: CostBreakdownLine[] = recipe.items.map((line) => ({
-    id: line.id,
-    kind: line.kind,
-    name: line.name,
-    quantity: line.quantity,
-    unit: line.unit,
-    costPerPortion: recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes).div(portions),
-  }));
+  const breakdown: CostBreakdownLine[] = recipe.items.map((line) => {
+    const lineCost = recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes);
+    return {
+      id: line.id,
+      kind: line.kind,
+      name: line.name,
+      quantity: line.quantity,
+      unit: line.unit,
+      costPerPortion:
+        line.kind === 'packaging'
+          ? lineCost
+          : lineCost.mul(wasteFactor).div(portions),
+    };
+  });
   return { batchCost, costPerPortion, costPerYieldUnit, portions, breakdown };
 }
 

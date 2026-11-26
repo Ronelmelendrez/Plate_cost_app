@@ -1,5 +1,7 @@
 import { Decimal } from 'decimal.js';
 
+import { MAX_CURRENCY_FRACTION_DIGITS } from './money';
+
 export interface ChannelPricingInput {
   costPerPortion: Decimal;
   priceMinor: number;
@@ -25,7 +27,7 @@ export function calculateChannelPricing(input: ChannelPricingInput): ChannelPric
     input.priceMinor <= 0 ||
     !Number.isInteger(input.fractionDigits) ||
     input.fractionDigits < 0 ||
-    input.fractionDigits > 3
+    input.fractionDigits > MAX_CURRENCY_FRACTION_DIGITS
   ) {
     throw new Error('A channel price must use valid minor units.');
   }

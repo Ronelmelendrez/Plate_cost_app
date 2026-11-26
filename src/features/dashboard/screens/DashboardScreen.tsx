@@ -10,6 +10,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { currencyFractionDigits } from '@core/costing/money';
 import { createDrizzleClient } from '@core/db/client';
+import {
+  getBackupReminderKind,
+  recordBackupExport,
+  shareBackupFile,
+  SharingUnavailableError,
+  snoozeBackupReminder,
+} from '@features/backup';
 import { getRecipeWorkspace } from '@features/recipes';
 import { MarginDishRow } from '@features/dashboard/components/MarginDishRow';
 import {
@@ -34,6 +41,8 @@ export default function DashboardScreen() {
   const [savedTargetMargin, setSavedTargetMargin] = useState(65);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingTarget, setIsSavingTarget] = useState(false);
+  const [isBackupBusy, setIsBackupBusy] = useState(false);
+  const [backupReminderError, setBackupReminderError] = useState('');
   const [error, setError] = useState('');
 
   const loadDashboard = useCallback(async () => {
@@ -123,8 +132,53 @@ export default function DashboardScreen() {
   };
 
   const dishCount = workspace?.recipes.filter((recipe) => !recipe.isSubRecipe).length ?? 0;
+  const backupReminderKind = settings ? getBackupReminderKind(settings, dishCount) : null;
   const currency = settings?.currencyCode ?? 'USD';
   const locale = settings?.locale ?? 'en-US';
+
+  const createReminderBackup = async () => {
+    setIsBackupBusy(true);
+    setBackupReminderError('');
+    try {
+      await shareBackupFile(database, t('settings.backupShareTitle'));
+    } catch (backupError) {
+      console.error('Unable to create or share a reminder backup.', backupError);
+      setBackupReminderError(
+        backupError instanceof SharingUnavailableError
+          ? t('settings.sharingUnavailable')
+          : t('settings.backupExportError'),
+      );
+      setIsBackupBusy(false);
+      return;
+    }
+
+    try {
+      const lastBackupAt = await recordBackupExport(database);
+      setSettings((current) =>
+        current
+          ? { ...current, lastBackupAt, backupReminderSnoozedUntil: null }
+          : current,
+      );
+    } catch (backupError) {
+      console.error('Unable to update the reminder after backup export.', backupError);
+      setBackupReminderError(t('dashboard.backupReminderSaveError'));
+    } finally {
+      setIsBackupBusy(false);
+    }
+  };
+
+  const snoozeReminder = async () => {
+    setBackupReminderError('');
+    try {
+      const backupReminderSnoozedUntil = await snoozeBackupReminder(database);
+      setSettings((current) =>
+        current ? { ...current, backupReminderSnoozedUntil } : current,
+      );
+    } catch (snoozeError) {
+      console.error('Unable to snooze the backup reminder.', snoozeError);
+      setBackupReminderError(t('dashboard.backupReminderSaveError'));
+    }
+  };
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
@@ -191,6 +245,36 @@ export default function DashboardScreen() {
           ) : (
             <Text className="text-sm text-muted">{t('dashboard.noPricedDishes')}</Text>
           )}
+        </View>
+      ) : null}
+      {backupReminderKind ? (
+        <View className="mx-4 mb-3 gap-3 rounded-xl border border-line bg-surface p-4">
+          <Text className="text-base font-semibold text-ink">
+            {t('dashboard.backupReminderTitle')}
+          </Text>
+          <Text className="text-base leading-6 text-muted">
+            {t(`dashboard.backupReminder.${backupReminderKind}`)}
+          </Text>
+          {backupReminderError ? (
+            <Text accessibilityRole="alert" className="text-sm text-bad">
+              {backupReminderError}
+            </Text>
+          ) : null}
+          <Button
+            label={t('dashboard.createBackup')}
+            variant="secondary"
+            onPress={() => void createReminderBackup()}
+            disabled={isBackupBusy}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('dashboard.remindBackupLater')}
+            onPress={() => void snoozeReminder()}
+            className="min-h-12 items-center justify-center">
+            <Text className="text-base font-semibold text-brand">
+              {t('dashboard.remindBackupLater')}
+            </Text>
+          </Pressable>
         </View>
       ) : null}
       {rowResult.error ? (

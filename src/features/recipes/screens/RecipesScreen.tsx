@@ -1,10 +1,11 @@
+import { FlashList } from '@shopify/flash-list';
 import { Decimal } from 'decimal.js';
 import { getLocales } from 'expo-localization';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { createDrizzleClient } from '@core/db/client';
@@ -143,7 +144,7 @@ export default function RecipesScreen() {
           </Text>
         </Pressable>
       ) : null}
-      <FlatList
+      <FlashList
         data={visibleRecipes}
         keyExtractor={(item) => item.recipe.id}
         keyboardShouldPersistTaps="handled"
@@ -169,8 +170,8 @@ export default function RecipesScreen() {
             </View>
           )
         }
-        contentContainerClassName="flex-grow"
-        className="flex-1"
+        contentContainerStyle={{ flexGrow: 1 }}
+        style={{ flex: 1 }}
       />
       <View className="gap-2 pb-3 pt-2">
         <Button label={t('recipes.addRecipe')} onPress={() => openNewRecipe('dish')} />

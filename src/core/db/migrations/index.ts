@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -170,6 +170,17 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
           END
           WHERE id = 1;
         PRAGMA user_version = 5;
+      `);
+    });
+    currentVersion = 5;
+  }
+
+  if (currentVersion < 6) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE global_settings ADD COLUMN last_backup_at TEXT;
+        ALTER TABLE global_settings ADD COLUMN backup_reminder_snoozed_until TEXT;
+        PRAGMA user_version = 6;
       `);
     });
   }

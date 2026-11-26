@@ -715,7 +715,7 @@ export default function OnboardingScreen() {
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{ checked: !selectedPackagingId }}
-                  className={`min-h-11 justify-center rounded-xl border px-3 ${
+                  className={`min-h-12 justify-center rounded-xl border px-3 ${
                     !selectedPackagingId ? 'border-brand bg-brand/10' : 'border-line'
                   }`}
                   onPress={() => {
@@ -733,7 +733,7 @@ export default function OnboardingScreen() {
                       key={item.id}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
-                      className={`min-h-11 justify-center rounded-xl border px-3 ${
+                      className={`min-h-12 justify-center rounded-xl border px-3 ${
                         selected ? 'border-brand bg-brand/10' : 'border-line'
                       }`}
                       onPress={() => {

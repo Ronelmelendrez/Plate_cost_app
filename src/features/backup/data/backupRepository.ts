@@ -14,6 +14,7 @@ import {
 } from '@core/db/schema';
 
 import type { BackupV1 } from '../domain/backupFormat';
+import { BACKUP_REMINDER_INTERVAL_MS } from '../domain/backupReminder';
 
 export interface BackupMergeResult {
   addedCount: number;
@@ -184,4 +185,32 @@ export async function mergeBackup(
         insertedPrices.length,
     };
   });
+}
+
+export async function recordBackupExport(database: AppDatabase) {
+  const lastBackupAt = new Date().toISOString();
+  const [updatedSettings] = await database
+    .update(globalSettings)
+    .set({ lastBackupAt, backupReminderSnoozedUntil: null })
+    .where(eq(globalSettings.id, 1))
+    .returning({ id: globalSettings.id });
+  if (!updatedSettings) {
+    throw new Error('Backup time could not be saved because global settings are missing.');
+  }
+  return lastBackupAt;
+}
+
+export async function snoozeBackupReminder(database: AppDatabase) {
+  const backupReminderSnoozedUntil = new Date(
+    Date.now() + BACKUP_REMINDER_INTERVAL_MS,
+  ).toISOString();
+  const [updatedSettings] = await database
+    .update(globalSettings)
+    .set({ backupReminderSnoozedUntil })
+    .where(eq(globalSettings.id, 1))
+    .returning({ id: globalSettings.id });
+  if (!updatedSettings) {
+    throw new Error('Backup reminder could not be snoozed because global settings are missing.');
+  }
+  return backupReminderSnoozedUntil;
 }
