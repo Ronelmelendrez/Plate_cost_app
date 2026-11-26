@@ -16,19 +16,24 @@ import {
   setIngredientFavourite,
   type Ingredient,
 } from '@features/ingredients/data/ingredientRepository';
+import { getAppSettings, type AppSettings } from '@features/settings';
 import { Button } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
 const localeInfo = getLocales()[0];
-const locale = localeInfo?.languageTag ?? 'en-US';
-const currency = localeInfo?.currencyCode ?? 'USD';
+const deviceLocale = localeInfo?.languageTag ?? 'en-US';
+const deviceCurrency = localeInfo?.currencyCode ?? 'USD';
 
 function IngredientRow({
   ingredient,
+  currency,
+  locale,
   onPress,
   onToggleFavourite,
 }: {
   ingredient: Ingredient;
+  currency: string;
+  locale: string;
   onPress: () => void;
   onToggleFavourite: () => void;
 }) {
@@ -108,6 +113,7 @@ export default function IngredientsScreen() {
   const database = useMemo(() => createDrizzleClient(sqlite), [sqlite]);
   const { t } = useTranslation();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -116,6 +122,7 @@ export default function IngredientsScreen() {
     setIsLoading(true);
     setError('');
     try {
+      setAppSettings(await getAppSettings(database));
       setIngredients(await listIngredients(database, search));
     } catch (loadError) {
       console.error('Unable to load ingredients.', loadError);
@@ -124,6 +131,9 @@ export default function IngredientsScreen() {
       setIsLoading(false);
     }
   }, [database, search, t]);
+
+  const currency = appSettings?.currencyCode ?? deviceCurrency;
+  const locale = appSettings?.locale ?? deviceLocale;
 
   useFocusEffect(
     useCallback(() => {
@@ -184,6 +194,8 @@ export default function IngredientsScreen() {
         renderItem={({ item }) => (
           <IngredientRow
             ingredient={item}
+            currency={currency}
+            locale={locale}
             onPress={() => void openIngredient(item)}
             onToggleFavourite={() => void toggleFavourite(item)}
           />

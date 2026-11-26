@@ -9,9 +9,6 @@ import {
 } from '@core/costing/units';
 import { formatDecimalInput } from '@core/costing/money';
 import { TextField } from '@shared/ui';
-import { getLocales } from 'expo-localization';
-
-const locale = getLocales()[0]?.languageTag ?? 'en-US';
 
 export interface ConversionDraft {
   fromUnit: ConversionUnit;
@@ -22,12 +19,14 @@ export interface ConversionDraft {
 interface IngredientConversionEditorProps {
   conversions: ConversionDraft[];
   onChange: (conversions: ConversionDraft[]) => void;
+  locale: string;
   error?: string;
 }
 
 export function IngredientConversionEditor({
   conversions,
   onChange,
+  locale,
   error,
 }: IngredientConversionEditorProps) {
   const { t } = useTranslation();

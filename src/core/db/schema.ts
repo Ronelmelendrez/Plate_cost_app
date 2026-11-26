@@ -111,8 +111,50 @@ export const recipeItems = sqliteTable(
 
 export const globalSettings = sqliteTable('global_settings', {
   id: integer('id').primaryKey().notNull().default(1),
+  locale: text('locale').notNull().default('en-US'),
+  currencyCode: text('currency_code').notNull().default('USD'),
+  unitSystem: text('unit_system', { enum: ['metric', 'us'] }).notNull().default('metric'),
+  cupMl: text('cup_ml').notNull().default('240'),
+  tablespoonMl: text('tablespoon_ml').notNull().default('15'),
+  pricesIncludeTax: integer('prices_include_tax', { mode: 'boolean' }).notNull().default(false),
+  taxPct: text('tax_pct').notNull().default('0'),
   wastePct: text('waste_pct').notNull().default('5'),
+  targetMarginPct: text('target_margin_pct').notNull().default('65'),
+  feesOnTaxIncludedPrice: integer('fees_on_tax_included_price', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  isInitialized: integer('is_initialized', { mode: 'boolean' }).notNull().default(false),
 });
+
+export const channels = sqliteTable(
+  'channels',
+  {
+    id: text('id').primaryKey().notNull().default(uuidDefault),
+    name: text('name').notNull(),
+    commissionPct: text('commission_pct').notNull().default('0'),
+    paymentFeePct: text('payment_fee_pct').notNull().default('0'),
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+  },
+  (table) => [index('channels_name_idx').on(table.name)],
+);
+
+export const recipeChannelPrices = sqliteTable(
+  'recipe_channel_prices',
+  {
+    id: text('id').primaryKey().notNull().default(uuidDefault),
+    recipeId: text('recipe_id')
+      .notNull()
+      .references(() => recipes.id, { onDelete: 'cascade' }),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    priceMinor: integer('price_minor').notNull(),
+  },
+  (table) => [
+    uniqueIndex('recipe_channel_price_unique_idx').on(table.recipeId, table.channelId),
+    index('recipe_channel_price_channel_idx').on(table.channelId),
+  ],
+);
 
 export const ingredientRelations = relations(ingredients, ({ many }) => ({
   conversions: many(unitConversions),
@@ -122,6 +164,7 @@ export const ingredientRelations = relations(ingredients, ({ many }) => ({
 
 export const recipeRelations = relations(recipes, ({ many }) => ({
   items: many(recipeItems),
+  channelPrices: many(recipeChannelPrices),
 }));
 
 export const recipeItemRelations = relations(recipeItems, ({ one }) => ({
@@ -145,6 +188,21 @@ export const unitConversionRelations = relations(unitConversions, ({ one }) => (
   }),
 }));
 
+export const channelRelations = relations(channels, ({ many }) => ({
+  recipePrices: many(recipeChannelPrices),
+}));
+
+export const recipeChannelPriceRelations = relations(recipeChannelPrices, ({ one }) => ({
+  recipe: one(recipes, {
+    fields: [recipeChannelPrices.recipeId],
+    references: [recipes.id],
+  }),
+  channel: one(channels, {
+    fields: [recipeChannelPrices.channelId],
+    references: [channels.id],
+  }),
+}));
+
 export const schema = {
   ingredients,
   ingredientRelations,
@@ -158,4 +216,8 @@ export const schema = {
   recipeItemRelations,
   packagingItems,
   globalSettings,
+  channels,
+  channelRelations,
+  recipeChannelPrices,
+  recipeChannelPriceRelations,
 };

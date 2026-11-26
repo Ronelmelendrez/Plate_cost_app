@@ -13,18 +13,23 @@ import {
   listRecipeSummaries,
   type RecipeSummary,
 } from '@features/recipes/data/recipeRepository';
+import { getAppSettings, type AppSettings } from '@features/settings';
 import { Button } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
 const localeInfo = getLocales()[0];
-const locale = localeInfo?.languageTag ?? 'en-US';
-const currency = localeInfo?.currencyCode ?? 'USD';
+const deviceLocale = localeInfo?.languageTag ?? 'en-US';
+const deviceCurrency = localeInfo?.currencyCode ?? 'USD';
 
 function RecipeRow({
   summary,
+  currency,
+  locale,
   onPress,
 }: {
   summary: RecipeSummary;
+  currency: string;
+  locale: string;
   onPress: () => void;
 }) {
   const { t } = useTranslation();
@@ -71,7 +76,7 @@ export default function RecipesScreen() {
   const sqlite = useSQLiteContext();
   const database = useMemo(() => createDrizzleClient(sqlite), [sqlite]);
   const { t } = useTranslation();
-  const fractionDigits = currencyFractionDigits(currency, locale);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [summaries, setSummaries] = useState<RecipeSummary[]>([]);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
@@ -81,14 +86,21 @@ export default function RecipesScreen() {
     setError('');
     setIsLoading(true);
     try {
-      setSummaries(await listRecipeSummaries(database, fractionDigits));
+      const currentSettings = await getAppSettings(database);
+      setAppSettings(currentSettings);
+      setSummaries(
+        await listRecipeSummaries(
+          database,
+          currencyFractionDigits(currentSettings.currencyCode, currentSettings.locale),
+        ),
+      );
     } catch (loadError) {
       console.error('Unable to load recipes.', loadError);
       setError(t('recipes.loadError'));
     } finally {
       setIsLoading(false);
     }
-  }, [database, fractionDigits, t]);
+  }, [database, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,6 +111,8 @@ export default function RecipesScreen() {
   const visibleRecipes = summaries.filter((summary) =>
     summary.recipe.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   );
+  const currency = appSettings?.currencyCode ?? deviceCurrency;
+  const locale = appSettings?.locale ?? deviceLocale;
 
   const openNewRecipe = (type: 'dish' | 'sub-recipe') => {
     router.push({ pathname: '/recipe/[id]', params: { id: 'new', type } });
@@ -136,6 +150,8 @@ export default function RecipesScreen() {
         renderItem={({ item }) => (
           <RecipeRow
             summary={item}
+            currency={currency}
+            locale={locale}
             onPress={() => router.push(`/recipe/${item.recipe.id}`)}
           />
         )}

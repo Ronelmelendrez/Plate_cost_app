@@ -25,6 +25,16 @@ export const RECIPE_UNITS = [
 export type RecipeUnit = (typeof RECIPE_UNITS)[number];
 export type RecipeYieldUnit = BaseUnit | 'portion';
 
+export interface RecipeUnitSizes {
+  cupMl: string;
+  tablespoonMl: string;
+}
+
+export const DEFAULT_RECIPE_UNIT_SIZES: RecipeUnitSizes = {
+  cupMl: '240',
+  tablespoonMl: '15',
+};
+
 export const UNIT_BASE: Record<PurchaseUnit, BaseUnit> = {
   kg: 'g',
   g: 'g',
@@ -68,6 +78,7 @@ export function quantityInBaseUnits(
   quantity: string,
   unit: RecipeUnit,
   conversion?: { baseQuantity: string; baseUnit: BaseUnit },
+  unitSizes: RecipeUnitSizes = DEFAULT_RECIPE_UNIT_SIZES,
 ) {
   const amount = new Decimal(quantity);
   if (conversion) {
@@ -79,11 +90,20 @@ export function quantityInBaseUnits(
       unit: conversion.baseUnit,
     };
   }
-  if (unit === 'cup' || unit === 'tbsp' || unit === 'tsp') {
-    throw new UnitMismatchError();
-  }
   if (unit === 'portion' || unit === 'pc' || unit === 'piece') {
     return { quantity: amount, unit: 'pc' as const };
+  }
+  if (unit === 'cup') {
+    return { quantity: amount.mul(unitSizes.cupMl), unit: 'ml' as const };
+  }
+  if (unit === 'tbsp') {
+    return { quantity: amount.mul(unitSizes.tablespoonMl), unit: 'ml' as const };
+  }
+  if (unit === 'tsp') {
+    return {
+      quantity: amount.mul(unitSizes.tablespoonMl).div(3),
+      unit: 'ml' as const,
+    };
   }
   return { quantity: amount.mul(UNIT_FACTORS[unit]), unit: UNIT_BASE[unit] };
 }

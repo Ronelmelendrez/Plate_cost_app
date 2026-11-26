@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -96,6 +96,52 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         );
         INSERT INTO global_settings (id, waste_pct) VALUES (1, '5');
         PRAGMA user_version = 2;
+      `);
+    });
+  }
+
+  if (currentVersion < 3) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE global_settings ADD COLUMN locale TEXT NOT NULL DEFAULT 'en-US';
+        ALTER TABLE global_settings ADD COLUMN currency_code TEXT NOT NULL DEFAULT 'USD';
+        ALTER TABLE global_settings ADD COLUMN unit_system TEXT NOT NULL DEFAULT 'metric';
+        ALTER TABLE global_settings ADD COLUMN cup_ml TEXT NOT NULL DEFAULT '240';
+        ALTER TABLE global_settings ADD COLUMN tablespoon_ml TEXT NOT NULL DEFAULT '15';
+        ALTER TABLE global_settings ADD COLUMN prices_include_tax INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE global_settings ADD COLUMN tax_pct TEXT NOT NULL DEFAULT '0';
+        ALTER TABLE global_settings ADD COLUMN target_margin_pct TEXT NOT NULL DEFAULT '65';
+        ALTER TABLE global_settings ADD COLUMN fees_on_tax_included_price INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE global_settings ADD COLUMN is_initialized INTEGER NOT NULL DEFAULT 0;
+
+        CREATE TABLE channels (
+          id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+          name TEXT NOT NULL,
+          commission_pct TEXT NOT NULL DEFAULT '0',
+          payment_fee_pct TEXT NOT NULL DEFAULT '0',
+          is_default INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX channels_name_idx ON channels(name);
+        INSERT INTO channels (id, name, commission_pct, payment_fee_pct, is_default) VALUES
+          ('dine-in', 'Dine-in', '0', '0', 1),
+          ('takeaway', 'Takeaway', '0', '0', 1),
+          ('delivery-app', 'Delivery app', '0', '0', 1),
+          ('online-order', 'Online order', '0', '0', 1);
+
+        CREATE TABLE recipe_channel_prices (
+          id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+          recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+          channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+          price_minor INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX recipe_channel_price_unique_idx
+          ON recipe_channel_prices(recipe_id, channel_id);
+        CREATE INDEX recipe_channel_price_channel_idx ON recipe_channel_prices(channel_id);
+        INSERT INTO recipe_channel_prices (recipe_id, channel_id, price_minor)
+          SELECT id, 'dine-in', selling_price_minor
+          FROM recipes
+          WHERE selling_price_minor IS NOT NULL;
+        PRAGMA user_version = 3;
       `);
     });
   }

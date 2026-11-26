@@ -14,14 +14,18 @@ import {
   globalSettings,
   ingredients,
   packagingItems,
+  channels,
+  recipeChannelPrices,
   recipeItems,
   recipes,
   unitConversions,
 } from '@core/db/schema';
-import type { RecipeUnit, RecipeYieldUnit } from '@core/costing/units';
+import type { RecipeUnit, RecipeUnitSizes, RecipeYieldUnit } from '@core/costing/units';
+import { getAppSettings, listSalesChannels } from '@features/settings';
 
 export type Recipe = typeof recipes.$inferSelect;
 export type PackagingItem = typeof packagingItems.$inferSelect;
+export type RecipeChannelPrice = typeof recipeChannelPrices.$inferSelect;
 
 export interface RecipeItemDraft {
   id: string;
@@ -45,6 +49,7 @@ export interface RecipeInput {
   overheadMode: 'none' | 'flat' | 'percent';
   overheadValue: string;
   items: RecipeItemDraft[];
+  channelPrices?: { channelId: string; priceMinor: number }[];
 }
 
 export interface RecipeSummary {
@@ -55,7 +60,8 @@ export interface RecipeSummary {
 }
 
 async function loadCostingContext(database: AppDatabase) {
-  const [recipeRows, itemRows, ingredientRows, conversionRows, packagingRows, settingsRows] =
+  const initializedSettings = await getAppSettings(database);
+  const [recipeRows, itemRows, ingredientRows, conversionRows, packagingRows, settingsRows, channelRows, channelPriceRows] =
     await Promise.all([
       database.select().from(recipes).orderBy(asc(recipes.name)),
       database.select().from(recipeItems),
@@ -63,6 +69,8 @@ async function loadCostingContext(database: AppDatabase) {
       database.select().from(unitConversions),
       database.select().from(packagingItems).orderBy(asc(packagingItems.name)),
       database.select().from(globalSettings).where(eq(globalSettings.id, 1)).limit(1),
+      listSalesChannels(database),
+      database.select().from(recipeChannelPrices),
     ]);
 
   const settings = settingsRows[0];
@@ -188,9 +196,16 @@ async function loadCostingContext(database: AppDatabase) {
     conversionsByIngredient,
     packagingItems: packagingRows,
     wastePct: settings.wastePct,
+    settings: initializedSettings,
+    unitSizes: {
+      cupMl: initializedSettings.cupMl,
+      tablespoonMl: initializedSettings.tablespoonMl,
+    } satisfies RecipeUnitSizes,
     buildCostInput,
     recipeEdges,
     recipeCostInputs,
+    channels: channelRows,
+    channelPrices: channelPriceRows,
   };
 }
 
@@ -201,7 +216,12 @@ export async function listRecipeSummaries(database: AppDatabase, fractionDigits:
     if (!costInput) {
       throw new Error(`Recipe "${recipe.name}" could not be loaded.`);
     }
-    const result = calculateRecipeCost(costInput, context.wastePct, fractionDigits);
+    const result = calculateRecipeCost(
+      costInput,
+      context.wastePct,
+      fractionDigits,
+      context.unitSizes,
+    );
     return {
       recipe,
       costPerUnit: (recipe.isSubRecipe ? result.costPerYieldUnit : result.costPerPortion).toString(),
@@ -222,7 +242,7 @@ export async function getRecipeEditorData(database: AppDatabase, id: string, fra
   if (!costInput) {
     return undefined;
   }
-  const cost = calculateRecipeCost(costInput, context.wastePct, fractionDigits);
+  const cost = calculateRecipeCost(costInput, context.wastePct, fractionDigits, context.unitSizes);
   return {
     recipe,
     items: context.itemsByRecipe.get(id) ?? [],
@@ -234,6 +254,10 @@ export async function getRecipeEditorData(database: AppDatabase, id: string, fra
     recipeCostInputs: context.recipeCostInputs,
     cost,
     wastePct: context.wastePct,
+    settings: context.settings,
+    channels: context.channels,
+    channelPrices: context.channelPrices.filter((price) => price.recipeId === id),
+    unitSizes: context.unitSizes,
   };
 }
 
@@ -245,6 +269,10 @@ export async function getRecipeWorkspace(database: AppDatabase) {
     recipes: context.recipes,
     packagingItems: context.packagingItems,
     wastePct: context.wastePct,
+    settings: context.settings,
+    channels: context.channels,
+    channelPrices: context.channelPrices,
+    unitSizes: context.unitSizes,
     recipeEdges: context.recipeEdges,
     recipeCostInputs: context.recipeCostInputs,
   };
@@ -262,6 +290,9 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
       (await transaction.select({ id: packagingItems.id }).from(packagingItems)).map(
         (item) => item.id,
       ),
+    );
+    const availableChannels = new Set(
+      (await transaction.select({ id: channels.id }).from(channels)).map((item) => item.id),
     );
     const recipesById = new Map(existing.map((recipe) => [recipe.id, recipe]));
     let recipeId = input.id;
@@ -354,6 +385,38 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
           referenceId: item.referenceId,
           quantity: item.quantity,
           unit: item.unit,
+        })),
+      );
+    }
+    const channelPrices =
+      input.channelPrices ??
+      (input.sellingPriceMinor === null
+        ? []
+        : [{ channelId: 'dine-in', priceMinor: input.sellingPriceMinor }]);
+    const savedChannelIds = new Set<string>();
+    for (const price of channelPrices) {
+      if (!availableChannels.has(price.channelId)) {
+        throw new MissingRecipeReferenceError();
+      }
+      if (
+        !Number.isSafeInteger(price.priceMinor) ||
+        price.priceMinor <= 0 ||
+        savedChannelIds.has(price.channelId)
+      ) {
+        throw new Error('Recipe channel prices must be positive, unique minor-unit amounts.');
+      }
+      savedChannelIds.add(price.channelId);
+    }
+    if ((!input.isSubRecipe && channelPrices.length === 0) || (input.isSubRecipe && channelPrices.length > 0)) {
+      throw new Error('Only dishes require sales channel prices.');
+    }
+    await transaction.delete(recipeChannelPrices).where(eq(recipeChannelPrices.recipeId, storedRecipeId));
+    if (channelPrices.length > 0) {
+      await transaction.insert(recipeChannelPrices).values(
+        channelPrices.map((price) => ({
+          recipeId: storedRecipeId,
+          channelId: price.channelId,
+          priceMinor: price.priceMinor,
         })),
       );
     }

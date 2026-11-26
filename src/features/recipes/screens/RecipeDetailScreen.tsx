@@ -35,6 +35,7 @@ import {
   RECIPE_YIELD_UNITS,
   type RecipeYieldUnit,
 } from '@core/costing/units';
+import { calculateChannelPricing } from '@core/costing/channelPricing';
 import type { RecipeEdge } from '@core/costing/cycleCheck';
 import { createDrizzleClient } from '@core/db/client';
 import type { Ingredient } from '@features/ingredients/data/ingredientRepository';
@@ -50,12 +51,13 @@ import {
 import { RecipeCostSummary } from '@features/recipes/components/RecipeCostSummary';
 import { RecipeItemPickerSheet } from '@features/recipes/components/RecipeItemPickerSheet';
 import { RecipeItemRow } from '@features/recipes/components/RecipeItemRow';
+import { getAppSettings, type AppSettings, type SalesChannel } from '@features/settings';
 import { Button, TextField } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
 const localeInfo = getLocales()[0];
-const locale = localeInfo?.languageTag ?? 'en-US';
-const currency = localeInfo?.currencyCode ?? 'USD';
+const deviceLocale = localeInfo?.languageTag ?? 'en-US';
+const deviceCurrency = localeInfo?.currencyCode ?? 'USD';
 
 interface RecipeWorkspace {
   ingredients: Ingredient[];
@@ -66,6 +68,10 @@ interface RecipeWorkspace {
   recipes: Recipe[];
   packagingItems: PackagingItem[];
   wastePct: string;
+  settings: AppSettings;
+  channels: SalesChannel[];
+  channelPrices: { recipeId: string; channelId: string; priceMinor: number }[];
+  unitSizes: { cupMl: string; tablespoonMl: string };
   recipeEdges: RecipeEdge[];
   recipeCostInputs: RecipeCostInput[];
 }
@@ -74,11 +80,11 @@ interface FormErrors {
   name?: string;
   portions?: string;
   batchYield?: string;
-  sellingPrice?: string;
   laborMinutes?: string;
   laborRate?: string;
   overhead?: string;
   items?: string;
+  channelPrices?: string;
 }
 
 function isUnitMismatch(error: unknown) {
@@ -93,16 +99,17 @@ export default function RecipeDetailScreen() {
   const database = useMemo(() => createDrizzleClient(sqlite), [sqlite]);
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const fractionDigits = currencyFractionDigits(currency, locale);
-  const priceAffixes = currencyAffixes(currency, locale);
 
   const [workspace, setWorkspace] = useState<RecipeWorkspace | null>(null);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [name, setName] = useState('');
   const [isSubRecipe, setIsSubRecipe] = useState(initialSubRecipe);
   const [portions, setPortions] = useState('1');
   const [batchYieldQuantity, setBatchYieldQuantity] = useState('1');
   const [batchYieldUnit, setBatchYieldUnit] = useState<RecipeYieldUnit>('portion');
-  const [sellingPrice, setSellingPrice] = useState('');
+  const [channelPriceValues, setChannelPriceValues] = useState<Record<string, string>>({});
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+  const [expandedChannelPriceId, setExpandedChannelPriceId] = useState<string>();
   const [items, setItems] = useState<RecipeItemDraft[]>([]);
   const [notes, setNotes] = useState('');
   const [laborMinutes, setLaborMinutes] = useState('0');
@@ -118,40 +125,67 @@ export default function RecipeDetailScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [removedItem, setRemovedItem] = useState<RecipeItemDraft>();
+  const locale = settings?.locale ?? deviceLocale;
+  const currency = settings?.currencyCode ?? deviceCurrency;
+  const fractionDigits = currencyFractionDigits(currency, locale);
+  const priceAffixes = currencyAffixes(currency, locale);
 
   const loadData = useCallback(async () => {
     setFormError('');
     setIsLoadError(false);
     try {
+      const currentSettings = await getAppSettings(database);
+      setSettings(currentSettings);
+      const currentFractionDigits = currencyFractionDigits(
+        currentSettings.currencyCode,
+        currentSettings.locale,
+      );
       if (isNew) {
-        setWorkspace(await getRecipeWorkspace(database));
+        const data = await getRecipeWorkspace(database);
+        setWorkspace(data);
+        const initialChannel = data.channels.find((channel) => channel.id === 'dine-in') ??
+          data.channels[0];
+        setSelectedChannelIds(initialChannel ? [initialChannel.id] : []);
+        setChannelPriceValues({});
+        setExpandedChannelPriceId(initialChannel?.id);
       } else {
-        const data = await getRecipeEditorData(database, id, fractionDigits);
+        const data = await getRecipeEditorData(database, id, currentFractionDigits);
         if (!data) {
           setFormError(t('recipes.recipeLoadError'));
           setIsLoadError(true);
           return;
         }
         setWorkspace(data);
+        const storedPrices =
+          data.channelPrices.length > 0
+            ? data.channelPrices
+            : data.recipe.sellingPriceMinor === null
+              ? []
+              : [{ channelId: 'dine-in', priceMinor: data.recipe.sellingPriceMinor }];
+        setSelectedChannelIds(storedPrices.map((price) => price.channelId));
+        setChannelPriceValues(
+          Object.fromEntries(
+            storedPrices.map((price) => [
+              price.channelId,
+              new Decimal(price.priceMinor)
+                .div(new Decimal(10).pow(currentFractionDigits))
+                .toFixed(currentFractionDigits),
+            ]),
+          ),
+        );
+        setExpandedChannelPriceId(storedPrices[0]?.channelId);
         setName(data.recipe.name);
         setIsSubRecipe(data.recipe.isSubRecipe);
         setPortions(String(data.recipe.portions));
         setBatchYieldQuantity(data.recipe.batchYieldQuantity);
         setBatchYieldUnit(data.recipe.batchYieldUnit);
-        setSellingPrice(
-          data.recipe.sellingPriceMinor === null
-            ? ''
-            : new Decimal(data.recipe.sellingPriceMinor)
-                .div(new Decimal(10).pow(fractionDigits))
-                .toFixed(fractionDigits),
-        );
         setItems(data.items);
         setNotes(data.recipe.notes ?? '');
         setLaborMinutes(data.recipe.laborMinutes);
         setLaborRate(
           new Decimal(data.recipe.laborRateMinor)
-            .div(new Decimal(10).pow(fractionDigits))
-            .toFixed(fractionDigits),
+            .div(new Decimal(10).pow(currentFractionDigits))
+            .toFixed(currentFractionDigits),
         );
         setOverheadMode(data.recipe.overheadMode);
         setOverheadValue(data.recipe.overheadValue);
@@ -162,7 +196,7 @@ export default function RecipeDetailScreen() {
       setFormError(t('recipes.loadError'));
       setIsLoadError(true);
     }
-  }, [database, fractionDigits, id, isNew, t]);
+  }, [database, id, isNew, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -236,7 +270,12 @@ export default function RecipeDetailScreen() {
         items: costLines,
       };
       return {
-        result: calculateRecipeCost(recipe, workspace.wastePct, fractionDigits),
+        result: calculateRecipeCost(
+          recipe,
+          workspace.wastePct,
+          fractionDigits,
+          workspace.unitSizes,
+        ),
         error: undefined,
       };
     } catch (costError) {
@@ -263,6 +302,7 @@ export default function RecipeDetailScreen() {
     isNew,
     isSubRecipe,
     items,
+    locale,
     laborMinutes,
     laborRate,
     overheadMode,
@@ -272,15 +312,31 @@ export default function RecipeDetailScreen() {
     workspace,
   ]);
 
-  const parsedPrice = parseDecimal(sellingPrice, locale);
-  const sellingPriceMinor = parsedPrice?.gt(0)
-    ? toMinorUnits(parsedPrice, fractionDigits)
+  const previewChannel = selectedChannelIds
+    .map((channelId) => ({
+      channel: workspace?.channels.find((channel) => channel.id === channelId),
+      price: parseDecimal(channelPriceValues[channelId] ?? '', locale),
+    }))
+    .find((entry) => entry.channel && entry.price?.gt(0));
+  const previewPriceMinor = previewChannel?.price
+    ? toMinorUnits(previewChannel.price, fractionDigits)
     : null;
   const profitPerPortion =
-    !isSubRecipe && costPreview.result && sellingPriceMinor !== null
-      ? new Decimal(sellingPriceMinor)
-          .div(new Decimal(10).pow(fractionDigits))
-          .minus(costPreview.result.costPerPortion)
+    !isSubRecipe &&
+    costPreview.result &&
+    previewChannel?.channel &&
+    previewPriceMinor !== null &&
+    settings
+      ? calculateChannelPricing({
+          costPerPortion: costPreview.result.costPerPortion,
+          priceMinor: previewPriceMinor,
+          fractionDigits,
+          commissionPct: previewChannel.channel.commissionPct,
+          paymentFeePct: previewChannel.channel.paymentFeePct,
+          pricesIncludeTax: settings.pricesIncludeTax,
+          taxPct: settings.taxPct,
+          feesOnTaxIncludedPrice: settings.feesOnTaxIncludedPrice,
+        }).profit
       : undefined;
 
   const openItemPicker = (item?: RecipeItemDraft) => {
@@ -298,6 +354,17 @@ export default function RecipeDetailScreen() {
     setEditingItem(undefined);
   };
 
+  const toggleChannel = (channelId: string) => {
+    const isSelected = selectedChannelIds.includes(channelId);
+    setSelectedChannelIds((current) =>
+      isSelected ? current.filter((id) => id !== channelId) : [...current, channelId],
+    );
+    setExpandedChannelPriceId((current) =>
+      isSelected ? (current === channelId ? undefined : current) : channelId,
+    );
+    setFormErrors((current) => ({ ...current, channelPrices: undefined }));
+  };
+
   const validateAndSave = async () => {
     const errors: FormErrors = {};
     const parsedName = name.trim();
@@ -306,6 +373,7 @@ export default function RecipeDetailScreen() {
     const parsedLaborMinutes = parseDecimal(laborMinutes, locale);
     const parsedLaborRate = parseDecimal(laborRate, locale);
     const parsedOverhead = parseDecimal(overheadValue, locale);
+    const channelPriceDrafts: { channelId: string; priceMinor: number }[] = [];
 
     if (!parsedName) {
       errors.name = t('recipes.nameRequired');
@@ -322,10 +390,21 @@ export default function RecipeDetailScreen() {
     if (isSubRecipe && (!parsedYield || parsedYield.lte(0))) {
       errors.batchYield = t('recipes.yieldRequired');
     }
-    if (!isSubRecipe && (!parsedPrice || parsedPrice.lte(0) || sellingPriceMinor === null)) {
-      errors.sellingPrice = parsedPrice?.gt(0)
-        ? t('recipes.pricePrecision', { digits: fractionDigits, currency })
-        : t('recipes.priceRequired');
+    if (!isSubRecipe && selectedChannelIds.length === 0) {
+      errors.channelPrices = t('recipes.channelRequired');
+    }
+    if (!isSubRecipe) {
+      for (const channelId of selectedChannelIds) {
+        const price = parseDecimal(channelPriceValues[channelId] ?? '', locale);
+        const priceMinor = price?.gt(0) ? toMinorUnits(price, fractionDigits) : null;
+        if (priceMinor === null) {
+          errors.channelPrices = price?.gt(0)
+            ? t('recipes.pricePrecision', { digits: fractionDigits, currency })
+            : t('recipes.channelPriceRequired');
+          break;
+        }
+        channelPriceDrafts.push({ channelId, priceMinor });
+      }
     }
     if (!parsedLaborMinutes || parsedLaborMinutes.lt(0)) {
       errors.laborMinutes = t('recipes.advancedNumberError');
@@ -356,12 +435,16 @@ export default function RecipeDetailScreen() {
         batchYieldQuantity: isSubRecipe ? parsedYield?.toString() ?? '1' : portions,
         batchYieldUnit: isSubRecipe ? batchYieldUnit : 'portion',
         isSubRecipe,
-        sellingPriceMinor: isSubRecipe ? null : sellingPriceMinor,
+        sellingPriceMinor:
+          channelPriceDrafts.find((price) => price.channelId === 'dine-in')?.priceMinor ??
+          channelPriceDrafts[0]?.priceMinor ??
+          null,
         notes: notes.trim(),
         laborMinutes: parsedLaborMinutes?.toString() ?? '0',
         laborRateMinor: toMinorUnits(parsedLaborRate ?? new Decimal(0), fractionDigits) ?? 0,
         overheadMode,
         overheadValue: parsedOverhead?.toString() ?? '0',
+        channelPrices: channelPriceDrafts,
         items: items.map((item) => ({
           ...item,
           quantity: parseDecimal(item.quantity, locale)?.toString() ?? item.quantity,
@@ -567,21 +650,95 @@ export default function RecipeDetailScreen() {
               keyboardType="decimal-pad"
               error={formErrors.portions}
             />
-            <TextField
-              label={t('recipes.sellingPrice')}
-              value={sellingPrice}
-              onChangeText={(value) => {
-                setSellingPrice(value);
-                setFormErrors((current) => ({ ...current, sellingPrice: undefined }));
-              }}
-              onBlur={() => setSellingPrice(formatDecimalInput(sellingPrice, locale))}
-              keyboardType="decimal-pad"
-              prefix={priceAffixes.prefix}
-              suffix={priceAffixes.suffix}
-              error={formErrors.sellingPrice}
-            />
           </>
         )}
+
+        {!isSubRecipe ? (
+          <View className="gap-2">
+            <Text className="text-base font-semibold text-ink">
+              {t('recipes.salesChannels')}
+            </Text>
+            {workspace?.channels.map((channel) => {
+              const isSelected = selectedChannelIds.includes(channel.id);
+              const isPriceExpanded = expandedChannelPriceId === channel.id;
+              return (
+                <View className="border-b border-line py-2" key={channel.id}>
+                  <View className="min-h-12 flex-row items-center">
+                    <Pressable
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: isSelected }}
+                      accessibilityLabel={t('recipes.selectSalesChannel', {
+                        name: channel.name,
+                      })}
+                      onPress={() => toggleChannel(channel.id)}
+                      className="min-h-12 flex-1 flex-row items-center justify-between">
+                      <View className="flex-1 gap-1">
+                        <Text className="text-base font-semibold text-ink">{channel.name}</Text>
+                        <Text className="text-sm text-muted">
+                          {t('recipes.channelFeesSummary', {
+                            commission: channel.commissionPct,
+                            payment: channel.paymentFeePct,
+                          })}
+                        </Text>
+                      </View>
+                      <Text className="ms-3 text-base font-semibold text-brand">
+                        {isSelected ? t('settings.on') : t('settings.off')}
+                      </Text>
+                    </Pressable>
+                    {isSelected ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('recipes.editChannelPrice', {
+                          name: channel.name,
+                        })}
+                        onPress={() => setExpandedChannelPriceId(channel.id)}
+                        className="ms-2 min-h-12 justify-center px-2">
+                        <Text className="text-sm font-semibold text-brand">
+                          {t('settings.edit')}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {isSelected && isPriceExpanded ? (
+                    <View className="pb-3 pt-2">
+                      <TextField
+                        label={t('recipes.channelPrice', { name: channel.name })}
+                        value={channelPriceValues[channel.id] ?? ''}
+                        onChangeText={(value) => {
+                          setChannelPriceValues((current) => ({
+                            ...current,
+                            [channel.id]: value,
+                          }));
+                          setFormErrors((current) => ({
+                            ...current,
+                            channelPrices: undefined,
+                          }));
+                        }}
+                        onBlur={() =>
+                          setChannelPriceValues((current) => ({
+                            ...current,
+                            [channel.id]: formatDecimalInput(
+                              current[channel.id] ?? '',
+                              locale,
+                            ),
+                          }))
+                        }
+                        keyboardType="decimal-pad"
+                        prefix={priceAffixes.prefix}
+                        suffix={priceAffixes.suffix}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+            {formErrors.channelPrices ? (
+              <Text accessibilityRole="alert" className="text-sm text-bad">
+                {formErrors.channelPrices}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         <View className="gap-2">
           <View className="flex-row items-center justify-between">
@@ -742,12 +899,13 @@ export default function RecipeDetailScreen() {
             : undefined
         }
         profitPerPortion={profitPerPortion}
+        profitChannelName={previewChannel?.channel?.name}
         isSubRecipe={isSubRecipe}
         error={costPreview.error}
         currency={currency}
         locale={locale}
       />
-      {costPreview.result && !isSubRecipe && sellingPriceMinor === null ? (
+      {costPreview.result && !isSubRecipe && previewPriceMinor === null ? (
         <Text className="bg-surface px-4 pb-2 text-sm text-muted">
           {t('recipes.noPriceYet')}
         </Text>
@@ -779,6 +937,10 @@ export default function RecipeDetailScreen() {
           currentRecipeId={isNew ? undefined : id}
           initialItem={editingItem}
           draftItems={items}
+          currency={currency}
+          locale={locale}
+          unitSystem={workspace.settings.unitSystem}
+          unitSizes={workspace.unitSizes}
         />
       ) : null}
     </SafeAreaView>

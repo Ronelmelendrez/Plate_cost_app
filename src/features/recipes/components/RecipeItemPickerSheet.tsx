@@ -1,5 +1,4 @@
 import { Decimal } from 'decimal.js';
-import { getLocales } from 'expo-localization';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -22,6 +21,7 @@ import {
   type BaseUnit,
   type ConversionUnit,
   type RecipeUnit,
+  type RecipeUnitSizes,
 } from '@core/costing/units';
 import {
   currencyAffixes,
@@ -35,10 +35,6 @@ import type { Ingredient } from '@features/ingredients/data/ingredientRepository
 import type { PackagingItem, Recipe, RecipeItemDraft } from '@features/recipes/data/recipeRepository';
 import { Button, TextField } from '@shared/ui';
 import { Colors } from '@shared/theme';
-
-const localeInfo = getLocales()[0];
-const locale = localeInfo?.languageTag ?? 'en-US';
-const currency = localeInfo?.currencyCode ?? 'USD';
 
 type ItemKind = RecipeItemDraft['kind'];
 
@@ -66,11 +62,19 @@ interface RecipeItemPickerSheetProps {
   currentRecipeId?: string;
   initialItem?: RecipeItemDraft;
   draftItems: RecipeItemDraft[];
+  currency: string;
+  locale: string;
+  unitSystem: 'metric' | 'us';
+  unitSizes: RecipeUnitSizes;
 }
 
-function isRecipeUnitCompatible(unit: RecipeUnit, baseUnit: 'g' | 'ml' | 'pc') {
+function isRecipeUnitCompatible(
+  unit: RecipeUnit,
+  baseUnit: 'g' | 'ml' | 'pc',
+  unitSizes: RecipeUnitSizes,
+) {
   try {
-    return quantityInBaseUnits('1', unit).unit === baseUnit;
+    return quantityInBaseUnits('1', unit, undefined, unitSizes).unit === baseUnit;
   } catch (error) {
     if (error instanceof UnitMismatchError) {
       return false;
@@ -92,6 +96,10 @@ export function RecipeItemPickerSheet({
   currentRecipeId,
   initialItem,
   draftItems,
+  currency,
+  locale,
+  unitSystem,
+  unitSizes,
 }: RecipeItemPickerSheetProps) {
   const { t } = useTranslation();
   const fractionDigits = currencyFractionDigits(currency, locale);
@@ -100,7 +108,9 @@ export function RecipeItemPickerSheet({
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<PickerOption | null>(null);
   const [quantity, setQuantity] = useState(initialItem?.quantity ?? '1');
-  const [unit, setUnit] = useState<RecipeUnit>(initialItem?.unit ?? 'kg');
+  const [unit, setUnit] = useState<RecipeUnit>(
+    initialItem?.unit ?? (unitSystem === 'us' ? 'lb' : 'kg'),
+  );
   const [error, setError] = useState('');
   const [isCreatingPackaging, setIsCreatingPackaging] = useState(false);
   const [packagingName, setPackagingName] = useState('');
@@ -117,7 +127,9 @@ export function RecipeItemPickerSheet({
         const units = [
           ...new Set([
             ...PURCHASE_UNITS.filter((candidate) => UNIT_BASE[candidate] === baseUnit),
-            ...RECIPE_UNITS.filter((candidate) => isRecipeUnitCompatible(candidate, baseUnit)),
+            ...RECIPE_UNITS.filter((candidate) =>
+              isRecipeUnitCompatible(candidate, baseUnit, unitSizes),
+            ),
             ...customUnits,
           ]),
         ];
@@ -151,7 +163,7 @@ export function RecipeItemPickerSheet({
         .map((recipe) => {
           const baseUnit = recipe.batchYieldUnit === 'portion' ? 'pc' : recipe.batchYieldUnit;
           const units = RECIPE_UNITS.filter((candidate) =>
-            isRecipeUnitCompatible(candidate, baseUnit),
+            isRecipeUnitCompatible(candidate, baseUnit, unitSizes),
           );
           return {
             id: recipe.id,
@@ -179,6 +191,7 @@ export function RecipeItemPickerSheet({
     packagingItems,
     recipeEdges,
     recipes,
+    unitSizes,
   ]);
 
   const visibleOptions = options.filter((option) =>

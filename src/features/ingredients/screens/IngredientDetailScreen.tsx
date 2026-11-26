@@ -25,6 +25,7 @@ import {
   parseDecimal,
   toMinorUnits,
 } from '@core/costing/money';
+import { getAppSettings, type AppSettings } from '@features/settings';
 import {
   getIngredient,
   getIngredientConversions,
@@ -41,8 +42,8 @@ import { Button, TextField } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
 const localeInfo = getLocales()[0];
-const locale = localeInfo?.languageTag ?? 'en-US';
-const currency = localeInfo?.currencyCode ?? 'USD';
+const deviceLocale = localeInfo?.languageTag ?? 'en-US';
+const deviceCurrency = localeInfo?.currencyCode ?? 'USD';
 type FormErrors = {
   name?: string;
   quantity?: string;
@@ -55,7 +56,15 @@ function priceForRecord(record: IngredientPriceRecord, fractionDigits: number) {
   return new Decimal(record.priceMinor).div(new Decimal(10).pow(fractionDigits));
 }
 
-function PriceHistory({ records }: { records: IngredientPriceRecord[] }) {
+function PriceHistory({
+  records,
+  currency,
+  locale,
+}: {
+  records: IngredientPriceRecord[];
+  currency: string;
+  locale: string;
+}) {
   const { t } = useTranslation();
   const fractionDigits = currencyFractionDigits(currency, locale);
 
@@ -96,6 +105,9 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
   const database = useMemo(() => createDrizzleClient(sqlite), [sqlite]);
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const locale = appSettings?.locale ?? deviceLocale;
+  const currency = appSettings?.currencyCode ?? deviceCurrency;
   const fractionDigits = currencyFractionDigits(currency, locale);
   const priceAffixes = currencyAffixes(currency, locale);
 
@@ -109,24 +121,29 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isReady, setIsReady] = useState(isCreate);
+  const [isReady, setIsReady] = useState(false);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [formError, setFormError] = useState('');
   const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
-    if (isCreate) {
-      return;
-    }
-
     let isMounted = true;
     async function loadIngredient() {
-      if (!id) {
-        setFormError(t('ingredients.notFound'));
-        return;
-      }
-
       try {
+        const settings = await getAppSettings(database);
+        if (!isMounted) {
+          return;
+        }
+        setAppSettings(settings);
+        if (isCreate) {
+          setPurchaseUnit(settings.unitSystem === 'us' ? 'lb' : 'kg');
+          setIsReady(true);
+          return;
+        }
+        if (!id) {
+          setFormError(t('ingredients.notFound'));
+          return;
+        }
         const [ingredient, savedConversions] = await Promise.all([
           getIngredient(database, id),
           getIngredientConversions(database, id),
@@ -421,6 +438,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
             <View className="gap-5 pb-2 pt-3">
               <IngredientConversionEditor
                 conversions={conversions}
+                locale={locale}
                 onChange={(updatedConversions) => {
                   setConversions(updatedConversions);
                   setFormErrors((current) => ({ ...current, conversions: undefined }));
@@ -443,7 +461,11 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
                       </Text>
                     </Pressable>
                   ) : isPriceHistoryLoading ? null : (
-                    <PriceHistory records={priceHistory} />
+                    <PriceHistory
+                      records={priceHistory}
+                      currency={currency}
+                      locale={locale}
+                    />
                   )}
                 </View>
               ) : null}

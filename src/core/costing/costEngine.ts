@@ -7,7 +7,9 @@ import {
   type BaseUnit,
   type PurchaseUnit,
   type RecipeUnit,
+  type RecipeUnitSizes,
   type RecipeYieldUnit,
+  DEFAULT_RECIPE_UNIT_SIZES,
 } from './units';
 
 export interface IngredientConversionInput {
@@ -99,6 +101,7 @@ export function recipeItemCost(
   fractionDigits: number,
   ancestry: Set<string> = new Set(),
   wastePct = '5',
+  unitSizes: RecipeUnitSizes = DEFAULT_RECIPE_UNIT_SIZES,
 ): Decimal {
   const quantity = new Decimal(line.quantity);
   if (quantity.lte(0)) {
@@ -118,6 +121,7 @@ export function recipeItemCost(
       customConversion
         ? { baseQuantity: customConversion.baseQuantity, baseUnit: customConversion.baseUnit }
         : undefined,
+      unitSizes,
     );
     const ingredientBaseUnit = quantityInBaseUnits('1', line.ingredient.purchaseUnit).unit;
     if (ingredientBaseUnit !== baseQuantity.unit) {
@@ -147,9 +151,10 @@ export function recipeItemCost(
       wastePct,
       fractionDigits,
       new Set([...ancestry, line.detail.id]),
+      unitSizes,
     );
-    const amount = quantityInBaseUnits(line.quantity, line.unit);
-    const yieldUnit = quantityInBaseUnits('1', line.detail.batchYieldUnit).unit;
+    const amount = quantityInBaseUnits(line.quantity, line.unit, undefined, unitSizes);
+    const yieldUnit = quantityInBaseUnits('1', line.detail.batchYieldUnit, undefined, unitSizes).unit;
     if (amount.unit !== yieldUnit) {
       throw new UnitMismatchError();
     }
@@ -173,6 +178,7 @@ function computeRecipeCost(
   wastePct: string,
   fractionDigits: number,
   ancestry: Set<string>,
+  unitSizes: RecipeUnitSizes,
 ): RecipeCostResult {
   if (recipe.portions < 1) {
     throw new Error('A recipe must have at least one portion.');
@@ -200,11 +206,13 @@ function computeRecipeCost(
   const componentLines = recipe.items.filter((line) => line.kind !== 'packaging');
   const packagingLines = recipe.items.filter((line) => line.kind === 'packaging');
   const ingredientSubtotal = componentLines.reduce(
-    (total, line) => total.plus(recipeItemCost(line, fractionDigits, ancestry, wastePct)),
+    (total, line) =>
+      total.plus(recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes)),
     new Decimal(0),
   );
   const packagingPerPortion = packagingLines.reduce(
-    (total, line) => total.plus(recipeItemCost(line, fractionDigits, ancestry, wastePct)),
+    (total, line) =>
+      total.plus(recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes)),
     new Decimal(0),
   );
   const laborCost = laborMinutes
@@ -229,7 +237,8 @@ function computeRecipeCost(
   const batchCost = costPerPortion.mul(portions);
   const yieldAmount = recipe.isSubRecipe ? batchYieldQuantity : new Decimal(recipe.portions);
   const batchYieldInBaseUnits = recipe.isSubRecipe
-    ? quantityInBaseUnits(batchYieldQuantity.toString(), recipe.batchYieldUnit).quantity
+    ? quantityInBaseUnits(batchYieldQuantity.toString(), recipe.batchYieldUnit, undefined, unitSizes)
+        .quantity
     : yieldAmount;
   const costPerYieldUnit = batchCost.div(batchYieldInBaseUnits);
 
@@ -239,7 +248,7 @@ function computeRecipeCost(
     name: line.name,
     quantity: line.quantity,
     unit: line.unit,
-    costPerPortion: recipeItemCost(line, fractionDigits, ancestry, wastePct).div(portions),
+    costPerPortion: recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes).div(portions),
   }));
   return { batchCost, costPerPortion, costPerYieldUnit, portions, breakdown };
 }
@@ -248,6 +257,7 @@ export function calculateRecipeCost(
   recipe: RecipeCostInput,
   wastePct: string,
   fractionDigits: number,
+  unitSizes: RecipeUnitSizes = DEFAULT_RECIPE_UNIT_SIZES,
 ) {
-  return computeRecipeCost(recipe, wastePct, fractionDigits, new Set([recipe.id]));
+  return computeRecipeCost(recipe, wastePct, fractionDigits, new Set([recipe.id]), unitSizes);
 }

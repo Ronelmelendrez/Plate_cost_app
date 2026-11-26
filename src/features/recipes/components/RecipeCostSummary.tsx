@@ -8,6 +8,7 @@ interface RecipeCostSummaryProps {
   batchCost?: Decimal;
   costPerUnit?: Decimal;
   profitPerPortion?: Decimal;
+  profitChannelName?: string;
   isSubRecipe: boolean;
   error?: string;
   currency: string;
@@ -18,6 +19,7 @@ export function RecipeCostSummary({
   batchCost,
   costPerUnit,
   profitPerPortion,
+  profitChannelName,
   isSubRecipe,
   error,
   currency,
@@ -55,7 +57,11 @@ export function RecipeCostSummary({
       )}
       {!isSubRecipe && profitPerPortion ? (
         <Text className="text-sm font-semibold text-ink">
-          {t('recipes.profitPerPortion')}: {formatCurrency(profitPerPortion, currency, locale)}
+          {t('recipes.profitPerPortionForChannel', {
+            channel: profitChannelName ?? '',
+          })}
+          {': '}
+          {formatCurrency(profitPerPortion, currency, locale)}
         </Text>
       ) : null}
     </View>
