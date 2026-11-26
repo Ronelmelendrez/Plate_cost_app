@@ -24,6 +24,10 @@ import {
   getMarginStatus,
   sortMarginDashboardRows,
 } from '@features/dashboard/domain/marginDashboard';
+import {
+  filterMarginDashboardRows,
+  type MarginDashboardFilter,
+} from '@features/dashboard/domain/marginFilters';
 import { saveTargetMargin, type AppSettings } from '@features/settings';
 import { Button } from '@shared/ui';
 import { Colors } from '@shared/theme';
@@ -37,6 +41,7 @@ export default function DashboardScreen() {
   const [workspace, setWorkspace] = useState<RecipeWorkspace>();
   const [settings, setSettings] = useState<AppSettings>();
   const [selectedChannelId, setSelectedChannelId] = useState('');
+  const [marginFilter, setMarginFilter] = useState<MarginDashboardFilter>('all');
   const [targetMargin, setTargetMargin] = useState(65);
   const [savedTargetMargin, setSavedTargetMargin] = useState(65);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,6 +111,8 @@ export default function DashboardScreen() {
   const belowTargetCount = pricedRows.filter((row) =>
     row.marginPct?.lt(targetMargin),
   ).length;
+  const targetMetCount = pricedRows.length - belowTargetCount;
+  const visibleRows = filterMarginDashboardRows(rows, marginFilter, new Decimal(targetMargin));
   const targetMarginLabel = new Intl.NumberFormat(settings?.locale ?? 'en-US', {
     style: 'percent',
     maximumFractionDigits: 1,
@@ -180,8 +187,8 @@ export default function DashboardScreen() {
     }
   };
 
-  return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
+  const dashboardHeader = (
+    <View>
       <View className="gap-1 px-4 pb-4 pt-3">
         <Text className="text-2xl font-bold text-ink">{t('dashboard.title')}</Text>
         <Text className="text-base leading-6 text-muted">{t('dashboard.subtitle')}</Text>
@@ -321,24 +328,87 @@ export default function DashboardScreen() {
         </View>
       ) : null}
 
+      {dishCount > 0 ? (
+        <View className="mx-4 mb-3 gap-3 rounded-xl border border-line bg-surface p-4">
+          <Text className="text-base font-semibold text-ink">
+            {t('dashboard.filterDishes')}
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="gap-2">
+            {([
+              { id: 'all', label: t('dashboard.filterAll'), count: rows.length },
+              {
+                id: 'below-target',
+                label: t('dashboard.filterBelowTarget'),
+                count: belowTargetCount,
+              },
+              {
+                id: 'target-met',
+                label: t('dashboard.filterTargetMet'),
+                count: targetMetCount,
+              },
+            ] satisfies { id: MarginDashboardFilter; label: string; count: number }[]).map(
+              (filter) => {
+                const selected = filter.id === marginFilter;
+                return (
+                  <Pressable
+                    key={filter.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={t('dashboard.selectDishFilter', {
+                      filter: filter.label,
+                      count: filter.count,
+                    })}
+                    onPress={() => setMarginFilter(filter.id)}
+                    className={`min-h-12 flex-row items-center gap-2 rounded-full border px-4 ${
+                      selected ? 'border-brand bg-brand' : 'border-line bg-bg'
+                    }`}>
+                    <Text
+                      className={`text-base ${
+                        selected ? 'font-semibold text-white' : 'text-ink'
+                      }`}>
+                      {filter.label}
+                    </Text>
+                    <Text
+                      className={`text-sm ${
+                        selected ? 'font-semibold text-white' : 'text-muted'
+                      }`}>
+                      {filter.count}
+                    </Text>
+                  </Pressable>
+                );
+              },
+            )}
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {dishCount > 0 ? (
+        <Text className="px-4 pb-3 pt-1 text-lg font-semibold text-ink">
+          {t('dashboard.dishesHeading')}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
       <FlashList
-        data={rows}
+        data={visibleRows}
         keyExtractor={(item) => item.recipeId}
-        ListHeaderComponent={
-          dishCount > 0 ? (
-            <Text className="pb-3 pt-1 text-lg font-semibold text-ink">
-              {t('dashboard.dishesHeading')}
-            </Text>
-          ) : null
-        }
+        ListHeaderComponent={dashboardHeader}
         renderItem={({ item }) => (
-          <MarginDishRow
-            row={item}
-            status={item.marginPct ? getMarginStatus(item.marginPct, new Decimal(targetMargin)) : undefined}
-            currency={currency}
-            locale={locale}
-            onPress={() => router.push(`/recipe/${item.recipeId}`)}
-          />
+          <View className="px-4">
+            <MarginDishRow
+              row={item}
+              status={item.marginPct ? getMarginStatus(item.marginPct, new Decimal(targetMargin)) : undefined}
+              currency={currency}
+              locale={locale}
+              onPress={() => router.push(`/recipe/${item.recipeId}`)}
+            />
+          </View>
         )}
         ListEmptyComponent={
           isLoading ? (
@@ -352,24 +422,29 @@ export default function DashboardScreen() {
                 {t('dashboard.emptyBody')}
               </Text>
             </View>
+          ) : marginFilter !== 'all' ? (
+            <View className="items-center gap-2 px-4 py-8">
+              <Text className="text-center text-base text-muted">
+                {t('dashboard.noDishesInFilter')}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('dashboard.showAllDishes')}
+                onPress={() => setMarginFilter('all')}
+                className="min-h-12 justify-center">
+                <Text className="text-base font-semibold text-brand">
+                  {t('dashboard.showAllDishes')}
+                </Text>
+              </Pressable>
+            </View>
           ) : null
         }
         contentContainerStyle={{
           flexGrow: 1,
-          paddingHorizontal: 16,
-          paddingBottom: 16,
+          paddingBottom: 24,
         }}
         style={{ flex: 1 }}
       />
-
-      <View className="border-t border-line bg-bg px-4 pb-3 pt-3">
-        <Button
-          label={t('dashboard.addDish')}
-          onPress={() =>
-            router.push({ pathname: '/recipe/[id]', params: { id: 'new', type: 'dish' } })
-          }
-        />
-      </View>
     </SafeAreaView>
   );
 }
