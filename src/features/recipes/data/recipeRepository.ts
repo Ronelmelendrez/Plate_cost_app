@@ -48,6 +48,7 @@ export interface RecipeInput {
   laborRateMinor: number;
   overheadMode: 'none' | 'flat' | 'percent';
   overheadValue: string;
+  imageUri?: string | null;
   items: RecipeItemDraft[];
   channelPrices?: { channelId: string; priceMinor: number }[];
 }
@@ -328,6 +329,7 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
           laborRateMinor: input.laborRateMinor,
           overheadMode: input.overheadMode,
           overheadValue: input.overheadValue,
+          imageUri: input.imageUri ?? null,
           updatedAt: now,
         })
         .where(eq(recipes.id, currentRecipeId));
@@ -346,6 +348,7 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
           laborRateMinor: input.laborRateMinor,
           overheadMode: input.overheadMode,
           overheadValue: input.overheadValue,
+          imageUri: input.imageUri ?? null,
           updatedAt: now,
         })
         .returning({ id: recipes.id });

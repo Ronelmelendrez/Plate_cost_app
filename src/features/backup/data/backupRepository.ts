@@ -14,6 +14,7 @@ import {
 } from '@core/db/schema';
 
 import type { BackupV1 } from '../domain/backupFormat';
+import { omitLocalRecipeImages } from '../domain/backupRecipe';
 import { BACKUP_REMINDER_INTERVAL_MS } from '../domain/backupReminder';
 
 export interface BackupMergeResult {
@@ -44,7 +45,7 @@ export async function createBackup(database: AppDatabase): Promise<BackupV1> {
         ingredients: ingredientRows,
         unit_conversions: conversionRows,
         ingredient_price_history: historyRows,
-        recipes: recipeRows,
+        recipes: omitLocalRecipeImages(recipeRows),
         recipe_items: recipeItemRows,
         packaging_items: packagingRows,
         global_settings: {

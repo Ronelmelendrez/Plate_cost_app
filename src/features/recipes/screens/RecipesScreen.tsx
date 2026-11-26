@@ -5,7 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, Text, TextInput, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { createDrizzleClient } from '@core/db/client';
@@ -48,6 +48,14 @@ function RecipeRow({
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       className="min-h-20 flex-row items-center border-b border-line py-3">
+      {!summary.recipe.isSubRecipe && summary.recipe.imageUri ? (
+        <Image
+          accessibilityLabel={summary.recipe.name}
+          source={{ uri: summary.recipe.imageUri }}
+          resizeMode="cover"
+          className="me-3 h-14 w-14 rounded-lg"
+        />
+      ) : null}
       <View className="flex-1 gap-1">
         <Text className="text-base font-semibold text-ink">{summary.recipe.name}</Text>
         <Text className="text-sm text-muted">

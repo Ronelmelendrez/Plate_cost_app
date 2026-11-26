@@ -76,6 +76,7 @@ export const recipes = sqliteTable(
       .notNull()
       .default('none'),
     overheadValue: text('overhead_value').notNull().default('0'),
+    imageUri: text('image_uri'),
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [index('recipes_name_idx').on(table.name)],

@@ -1,11 +1,13 @@
 import { Decimal } from 'decimal.js';
 import { getLocales } from 'expo-localization';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
+  Image,
   ScrollView,
   Text,
   TextInput,
@@ -54,6 +56,7 @@ import {
   type Recipe,
   type RecipeItemDraft,
 } from '@features/recipes/data/recipeRepository';
+import { persistRecipeImage, removeStoredRecipeImage } from '@features/recipes/data/recipeImages';
 import { RecipeCostSummary } from '@features/recipes/components/RecipeCostSummary';
 import { RecipeItemPickerSheet } from '@features/recipes/components/RecipeItemPickerSheet';
 import { RecipeItemRow } from '@features/recipes/components/RecipeItemRow';
@@ -112,6 +115,11 @@ export default function RecipeDetailScreen() {
   const [workspace, setWorkspace] = useState<RecipeWorkspace | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [name, setName] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [savedImageUri, setSavedImageUri] = useState<string | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [photoError, setPhotoError] = useState('');
+  const [isPickingPhoto, setIsPickingPhoto] = useState(false);
   const [isSubRecipe, setIsSubRecipe] = useState(initialSubRecipe);
   const [portions, setPortions] = useState('1');
   const [batchYieldQuantity, setBatchYieldQuantity] = useState('1');
@@ -155,6 +163,9 @@ export default function RecipeDetailScreen() {
       if (isNew) {
         const data = await getRecipeWorkspace(database);
         setWorkspace(data);
+        setImageUri(null);
+        setSavedImageUri(null);
+        setPendingPhoto(null);
         const initialChannel = data.channels.find((channel) => channel.id === 'dine-in') ??
           data.channels[0];
         setSelectedChannelIds(initialChannel ? [initialChannel.id] : []);
@@ -168,6 +179,9 @@ export default function RecipeDetailScreen() {
           return;
         }
         setWorkspace(data);
+        setImageUri(data.recipe.imageUri);
+        setSavedImageUri(data.recipe.imageUri);
+        setPendingPhoto(null);
         const storedPrices =
           data.channelPrices.length > 0
             ? data.channelPrices
@@ -377,6 +391,32 @@ export default function RecipeDetailScreen() {
     setFormErrors((current) => ({ ...current, channelPrices: undefined }));
   };
 
+  const pickDishPhoto = async () => {
+    setPhotoError('');
+    setIsPickingPhoto(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      if (!result.canceled) {
+        const selectedPhoto = result.assets[0];
+        if (!selectedPhoto) {
+          throw new Error('The photo picker returned no image.');
+        }
+        setPendingPhoto(selectedPhoto);
+        setImageUri(selectedPhoto.uri);
+      }
+    } catch (pickerError) {
+      console.error('Unable to select recipe photo.', pickerError);
+      setPhotoError(t('recipes.photoPickError'));
+    } finally {
+      setIsPickingPhoto(false);
+    }
+  };
+
   const validateAndSave = async () => {
     const errors: FormErrors = {};
     const parsedName = name.trim();
@@ -465,6 +505,24 @@ export default function RecipeDetailScreen() {
     setIsSaving(true);
     setFormError('');
     setIsLoadError(false);
+    setPhotoError('');
+    let newlyPersistedImageUri: string | null = null;
+    let imageUriToSave = imageUri;
+    if (pendingPhoto) {
+      try {
+        newlyPersistedImageUri = await persistRecipeImage(
+          pendingPhoto.uri,
+          pendingPhoto.file,
+        );
+        imageUriToSave = newlyPersistedImageUri;
+      } catch (imageError) {
+        console.error('Unable to save selected recipe photo.', imageError);
+        setPhotoError(t('recipes.photoSaveError'));
+        setIsSaving(false);
+        return;
+      }
+    }
+    const previousImageUri = savedImageUri;
     try {
       const savedRecipeId = await saveRecipe(database, {
         id: isNew ? undefined : id,
@@ -482,12 +540,24 @@ export default function RecipeDetailScreen() {
         laborRateMinor: toMinorUnits(parsedLaborRate ?? new Decimal(0), fractionDigits) ?? 0,
         overheadMode,
         overheadValue: parsedOverhead?.toString() ?? '0',
+        imageUri: imageUriToSave,
         channelPrices: channelPriceDrafts,
         items: items.map((item) => ({
           ...item,
           quantity: parseDecimal(item.quantity, locale)?.toString() ?? item.quantity,
         })),
       });
+      newlyPersistedImageUri = null;
+      setSavedImageUri(imageUriToSave);
+      setImageUri(imageUriToSave);
+      setPendingPhoto(null);
+      if (previousImageUri && previousImageUri !== imageUriToSave) {
+        try {
+          await removeStoredRecipeImage(previousImageUri);
+        } catch (cleanupError) {
+          console.error('Unable to remove the previous recipe photo.', cleanupError);
+        }
+      }
       if (previousSubRecipeCost) {
         try {
           const updatedSubRecipe = await getRecipeEditorData(
@@ -517,6 +587,13 @@ export default function RecipeDetailScreen() {
       router.back();
     } catch (saveError) {
       console.error('Unable to save recipe.', saveError);
+      if (newlyPersistedImageUri) {
+        try {
+          await removeStoredRecipeImage(newlyPersistedImageUri);
+        } catch (cleanupError) {
+          console.error('Unable to remove an unsaved recipe photo.', cleanupError);
+        }
+      }
       if (saveError instanceof RecipeCycleError) {
         setFormError(t('recipes.cycleError'));
       } else if (saveError instanceof MissingRecipeReferenceError) {
@@ -748,6 +825,63 @@ export default function RecipeDetailScreen() {
           }}
           error={formErrors.name}
         />
+        {!isSubRecipe ? (
+          <View className="gap-2">
+            <Text className="text-sm font-semibold text-ink">{t('recipes.photo')}</Text>
+            {imageUri ? (
+              <Image
+                accessibilityLabel={t('recipes.photo')}
+                source={{ uri: imageUri }}
+                resizeMode="cover"
+                className="h-48 w-full rounded-xl"
+              />
+            ) : (
+              <View className="h-48 items-center justify-center gap-2 rounded-xl border border-line bg-surface">
+                <SymbolView
+                  name={{ ios: 'photo', android: 'image', web: 'image' }}
+                  tintColor={Colors.light.tabIconDefault}
+                  size={28}
+                />
+                <Text className="text-sm text-muted">{t('recipes.photo')}</Text>
+              </View>
+            )}
+            <View className="flex-row gap-2">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t(imageUri ? 'recipes.changePhoto' : 'recipes.addPhoto')}
+                disabled={!isReady || isPickingPhoto || isSaving}
+                onPress={() => void pickDishPhoto()}
+                className={`min-h-12 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-3 ${
+                  isPickingPhoto ? 'opacity-50' : ''
+                }`}>
+                <Text className="text-base font-semibold text-brand">
+                  {t(imageUri ? 'recipes.changePhoto' : 'recipes.addPhoto')}
+                </Text>
+              </Pressable>
+              {imageUri ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('recipes.removePhoto')}
+                  disabled={isSaving}
+                  onPress={() => {
+                    setImageUri(null);
+                    setPendingPhoto(null);
+                    setPhotoError('');
+                  }}
+                  className="min-h-12 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-3">
+                  <Text className="text-base font-semibold text-bad">
+                    {t('recipes.removePhoto')}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            {photoError ? (
+              <Text accessibilityRole="alert" className="text-sm text-bad">
+                {photoError}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         {isSubRecipe ? (
           <>
             <TextField

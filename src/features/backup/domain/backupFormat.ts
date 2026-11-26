@@ -27,6 +27,7 @@ type Ingredient = typeof ingredients.$inferSelect;
 type UnitConversion = typeof unitConversions.$inferSelect;
 type IngredientPriceHistory = typeof ingredientPriceHistory.$inferSelect;
 type Recipe = typeof recipes.$inferSelect;
+type BackupRecipe = Omit<Recipe, 'imageUri'>;
 type RecipeItem = typeof recipeItems.$inferSelect;
 type PackagingItem = typeof packagingItems.$inferSelect;
 type Channel = typeof channels.$inferSelect;
@@ -56,7 +57,7 @@ export interface BackupV1 {
     ingredients: Ingredient[];
     unit_conversions: UnitConversion[];
     ingredient_price_history: IngredientPriceHistory[];
-    recipes: Recipe[];
+    recipes: BackupRecipe[];
     recipe_items: RecipeItem[];
     packaging_items: PackagingItem[];
     global_settings: BackupGlobalSettings;
@@ -230,9 +231,9 @@ function parseIngredientPriceHistory(value: unknown): IngredientPriceHistory[] {
   );
 }
 
-function parseRecipes(value: unknown): Recipe[] {
+function parseRecipes(value: unknown): BackupRecipe[] {
   return assertUniqueIds(
-    arrayValue(value).map((entry): Recipe => {
+    arrayValue(value).map((entry): BackupRecipe => {
       const row = recordValue(entry);
       return {
         id: stringValue(row.id),
