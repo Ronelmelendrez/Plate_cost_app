@@ -51,6 +51,9 @@ import {
 import { RecipeCostSummary } from '@features/recipes/components/RecipeCostSummary';
 import { RecipeItemPickerSheet } from '@features/recipes/components/RecipeItemPickerSheet';
 import { RecipeItemRow } from '@features/recipes/components/RecipeItemRow';
+import type { PriceChangeImpactReport } from '@features/impact/data/impactRepository';
+import { getPriceChangeImpact } from '@features/impact/data/impactRepository';
+import { PriceChangeImpactSheet } from '@features/impact/components/PriceChangeImpactSheet';
 import { getAppSettings, type AppSettings, type SalesChannel } from '@features/settings';
 import { Button, TextField } from '@shared/ui';
 import { Colors } from '@shared/theme';
@@ -125,6 +128,7 @@ export default function RecipeDetailScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [removedItem, setRemovedItem] = useState<RecipeItemDraft>();
+  const [impactReport, setImpactReport] = useState<PriceChangeImpactReport | null>(null);
   const locale = settings?.locale ?? deviceLocale;
   const currency = settings?.currencyCode ?? deviceCurrency;
   const fractionDigits = currencyFractionDigits(currency, locale);
@@ -424,11 +428,37 @@ export default function RecipeDetailScreen() {
       return;
     }
 
+    const storedRecipe = workspace?.recipes.find((recipe) => recipe.id === id);
+    const isExistingSubRecipe =
+      !isNew && isSubRecipe && storedRecipe?.isSubRecipe === true;
+    let previousSubRecipeCost: Decimal | undefined;
+    if (isExistingSubRecipe) {
+      const previousSubRecipeInput = workspace?.recipeCostInputs.find(
+        (recipe) => recipe.id === id,
+      );
+      if (!workspace || !previousSubRecipeInput) {
+        setFormError(t('recipes.recipeLoadError'));
+        return;
+      }
+      try {
+        previousSubRecipeCost = calculateRecipeCost(
+          previousSubRecipeInput,
+          workspace.wastePct,
+          fractionDigits,
+          workspace.unitSizes,
+        ).costPerYieldUnit;
+      } catch (costError) {
+        console.error('Unable to calculate the existing sub-recipe cost.', costError);
+        setFormError(t('recipes.costError'));
+        return;
+      }
+    }
+
     setIsSaving(true);
     setFormError('');
     setIsLoadError(false);
     try {
-      await saveRecipe(database, {
+      const savedRecipeId = await saveRecipe(database, {
         id: isNew ? undefined : id,
         name: parsedName,
         portions: isSubRecipe ? 1 : parsedPortions?.toNumber() ?? 1,
@@ -450,6 +480,32 @@ export default function RecipeDetailScreen() {
           quantity: parseDecimal(item.quantity, locale)?.toString() ?? item.quantity,
         })),
       });
+      if (previousSubRecipeCost) {
+        try {
+          const updatedSubRecipe = await getRecipeEditorData(
+            database,
+            savedRecipeId,
+            fractionDigits,
+          );
+          if (!updatedSubRecipe) {
+            throw new Error('The saved sub-recipe could not be reloaded.');
+          }
+          if (!previousSubRecipeCost.eq(updatedSubRecipe.cost.costPerYieldUnit)) {
+            const report = await getPriceChangeImpact(database, {
+              type: 'recipe',
+              id: savedRecipeId,
+            });
+            if (report.dishes.length > 0) {
+              setImpactReport(report);
+              return;
+            }
+          }
+        } catch (impactError) {
+          console.error('Unable to calculate sub-recipe price-change impact.', impactError);
+          setFormError(t('impact.savedButImpactError'));
+          return;
+        }
+      }
       router.back();
     } catch (saveError) {
       console.error('Unable to save recipe.', saveError);
@@ -942,6 +998,28 @@ export default function RecipeDetailScreen() {
           locale={locale}
           unitSystem={workspace.settings.unitSystem}
           unitSizes={workspace.unitSizes}
+        />
+      ) : null}
+      {impactReport ? (
+        <PriceChangeImpactSheet
+          report={impactReport}
+          bottomInset={insets.bottom}
+          onClose={() => {
+            setImpactReport(null);
+            router.back();
+          }}
+          onReview={() => {
+            const { source } = impactReport;
+            setImpactReport(null);
+            router.push({
+              pathname: '/impact',
+              params: { kind: source.type, id: source.id },
+            });
+          }}
+          onSelectDish={(recipeId) => {
+            setImpactReport(null);
+            router.push(`/recipe/${recipeId}`);
+          }}
         />
       ) : null}
     </SafeAreaView>

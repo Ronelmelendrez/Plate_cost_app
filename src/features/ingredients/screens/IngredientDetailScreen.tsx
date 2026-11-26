@@ -32,12 +32,16 @@ import {
   getIngredientPriceHistory,
   markIngredientRecent,
   saveIngredient,
+  type Ingredient,
   type IngredientPriceRecord,
 } from '@features/ingredients/data/ingredientRepository';
 import {
   IngredientConversionEditor,
   type ConversionDraft,
 } from '@features/ingredients/components/IngredientConversionEditor';
+import type { PriceChangeImpactReport } from '@features/impact/data/impactRepository';
+import { getPriceChangeImpact } from '@features/impact/data/impactRepository';
+import { PriceChangeImpactSheet } from '@features/impact/components/PriceChangeImpactSheet';
 import { Button, TextField } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
@@ -118,6 +122,8 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
   const [usableYieldPct, setUsableYieldPct] = useState('100');
   const [conversions, setConversions] = useState<ConversionDraft[]>([]);
   const [priceHistory, setPriceHistory] = useState<IngredientPriceRecord[]>([]);
+  const [originalIngredient, setOriginalIngredient] = useState<Ingredient | null>(null);
+  const [impactReport, setImpactReport] = useState<PriceChangeImpactReport | null>(null);
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -156,6 +162,12 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
           return;
         }
 
+        const conversionDrafts = savedConversions.map((conversion) => ({
+          fromUnit: conversion.fromUnit,
+          baseQuantity: conversion.baseQuantity,
+          baseUnit: conversion.baseUnit,
+        }));
+        setOriginalIngredient(ingredient);
         setName(ingredient.name);
         setPurchaseUnit(ingredient.purchaseUnit);
         setPurchaseQuantity(ingredient.purchaseQuantity);
@@ -165,13 +177,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
             .toFixed(fractionDigits),
         );
         setUsableYieldPct(ingredient.usableYieldPct);
-        setConversions(
-          savedConversions.map((conversion) => ({
-            fromUnit: conversion.fromUnit,
-            baseQuantity: conversion.baseQuantity,
-            baseUnit: conversion.baseUnit,
-          })),
-        );
+        setConversions(conversionDrafts);
         setIsReady(true);
         void markIngredientRecent(database, ingredient.id).catch((recentError: unknown) => {
           console.error('Unable to update recent ingredient.', recentError);
@@ -284,11 +290,18 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
     if (priceMinor === null) {
       return;
     }
+    const costChanged =
+      !isCreate &&
+      originalIngredient !== null &&
+      (originalIngredient.purchaseUnit !== purchaseUnit ||
+        !new Decimal(originalIngredient.purchaseQuantity).eq(parsedQuantity) ||
+        originalIngredient.purchasePriceMinor !== priceMinor ||
+        !new Decimal(originalIngredient.usableYieldPct).eq(parsedYield));
 
     setIsSaving(true);
     setFormError('');
     try {
-      await saveIngredient(database, {
+      const savedIngredientId = await saveIngredient(database, {
         id: isCreate ? undefined : id,
         name: parsedName,
         purchaseUnit,
@@ -297,6 +310,22 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
         usableYieldPct: parsedYield.toString(),
         conversions: customConversions,
       });
+      if (costChanged) {
+        try {
+          const report = await getPriceChangeImpact(database, {
+            type: 'ingredient',
+            id: savedIngredientId,
+          });
+          if (report.dishes.length > 0) {
+            setImpactReport(report);
+            return;
+          }
+        } catch (impactError) {
+          console.error('Unable to calculate ingredient price-change impact.', impactError);
+          setFormError(t('impact.savedButImpactError'));
+          return;
+        }
+      }
       router.back();
     } catch (saveError) {
       console.error('Unable to save ingredient.', saveError);
@@ -481,6 +510,28 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
           disabled={isSaving || !isReady}
         />
       </View>
+      {impactReport ? (
+        <PriceChangeImpactSheet
+          report={impactReport}
+          bottomInset={insets.bottom}
+          onClose={() => {
+            setImpactReport(null);
+            router.back();
+          }}
+          onReview={() => {
+            const { source } = impactReport;
+            setImpactReport(null);
+            router.push({
+              pathname: '/impact',
+              params: { kind: source.type, id: source.id },
+            });
+          }}
+          onSelectDish={(recipeId) => {
+            setImpactReport(null);
+            router.push(`/recipe/${recipeId}`);
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
