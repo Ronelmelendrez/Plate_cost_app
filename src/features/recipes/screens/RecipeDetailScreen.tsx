@@ -900,6 +900,7 @@ export default function RecipeDetailScreen() {
         }
         profitPerPortion={profitPerPortion}
         profitChannelName={previewChannel?.channel?.name}
+        recipeId={!isNew && !isSubRecipe ? id : undefined}
         isSubRecipe={isSubRecipe}
         error={costPreview.error}
         currency={currency}

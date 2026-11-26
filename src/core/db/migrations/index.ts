@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -142,6 +142,15 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
           FROM recipes
           WHERE selling_price_minor IS NOT NULL;
         PRAGMA user_version = 3;
+      `);
+    });
+  }
+
+  if (currentVersion < 4) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE global_settings ADD COLUMN rounding_rule TEXT NOT NULL DEFAULT 'auto';
+        PRAGMA user_version = 4;
       `);
     });
   }

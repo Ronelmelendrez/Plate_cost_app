@@ -3,6 +3,11 @@ import { getLocales } from 'expo-localization';
 import { asc, desc, eq } from 'drizzle-orm';
 
 import { parseDecimal } from '@core/costing/money';
+import {
+  getAvailableRoundingRules,
+  getDefaultRoundingRule,
+  type SuggestedPriceRoundingRule,
+} from '@core/costing/suggestedPrice';
 import type { AppDatabase } from '@core/db/client';
 import { channels, globalSettings } from '@core/db/schema';
 
@@ -21,7 +26,7 @@ export type AppSettingsDraft = Pick<
   | 'wastePct'
   | 'targetMarginPct'
   | 'feesOnTaxIncludedPrice'
->;
+> & { roundingRule: SuggestedPriceRoundingRule };
 
 export interface SalesChannelDraft {
   id?: string;
@@ -73,6 +78,13 @@ export function validateSettingsDraft(
   ) {
     return 'settings';
   }
+  const fractionDigits = new Intl.NumberFormat(settings.locale, {
+    style: 'currency',
+    currency: settings.currencyCode,
+  }).resolvedOptions().maximumFractionDigits ?? 2;
+  if (!getAvailableRoundingRules(fractionDigits).includes(settings.roundingRule)) {
+    return 'rounding';
+  }
   if (channelDrafts.length === 0) {
     return 'channels';
   }
@@ -102,22 +114,33 @@ export async function getAppSettings(database: AppDatabase) {
   if (!settings) {
     throw new Error('Global settings are missing from the database.');
   }
-  if (settings.isInitialized) {
+  if (settings.isInitialized && settings.roundingRule !== 'auto') {
     return settings;
   }
 
-  const deviceLocale = getLocales()[0];
-  const locale = deviceLocale?.languageTag ?? 'en-US';
+  const deviceLocale = settings.isInitialized ? undefined : getLocales()[0];
+  const locale = settings.isInitialized
+    ? settings.locale
+    : (deviceLocale?.languageTag ?? 'en-US');
+  const currencyCode = settings.isInitialized
+    ? settings.currencyCode
+    : (deviceLocale?.currencyCode ?? 'USD');
   const measurementSystem = deviceLocale?.measurementSystem;
-  const unitSystem = measurementSystem === 'us' || measurementSystem === 'uk' ? 'us' : 'metric';
+  const unitSystem =
+    measurementSystem === 'us' || measurementSystem === 'uk' ? 'us' : 'metric';
   await database
     .update(globalSettings)
     .set({
-      locale,
-      currencyCode: deviceLocale?.currencyCode ?? 'USD',
-      unitSystem,
-      cupMl: unitSystem === 'us' ? '240' : '250',
-      tablespoonMl: '15',
+      ...(settings.isInitialized
+        ? {}
+        : {
+            locale,
+            currencyCode,
+            unitSystem,
+            cupMl: unitSystem === 'us' ? '240' : '250',
+            tablespoonMl: '15',
+          }),
+      roundingRule: getDefaultRoundingRule(currencyCode, locale),
       isInitialized: true,
     })
     .where(eq(globalSettings.id, 1));

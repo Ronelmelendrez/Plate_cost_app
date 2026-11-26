@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
-import { Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { formatCurrency } from '@core/costing/money';
@@ -9,6 +10,7 @@ interface RecipeCostSummaryProps {
   costPerUnit?: Decimal;
   profitPerPortion?: Decimal;
   profitChannelName?: string;
+  recipeId?: string;
   isSubRecipe: boolean;
   error?: string;
   currency: string;
@@ -20,6 +22,7 @@ export function RecipeCostSummary({
   costPerUnit,
   profitPerPortion,
   profitChannelName,
+  recipeId,
   isSubRecipe,
   error,
   currency,
@@ -63,6 +66,17 @@ export function RecipeCostSummary({
           {': '}
           {formatCurrency(profitPerPortion, currency, locale)}
         </Text>
+      ) : null}
+      {!isSubRecipe && recipeId ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('pricing.openWhatIf')}
+          onPress={() => router.push(`/recipe/${recipeId}/price`)}
+          className="min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4">
+          <Text className="text-base font-semibold text-brand">
+            {t('pricing.openWhatIf')}
+          </Text>
+        </Pressable>
       ) : null}
     </View>
   );

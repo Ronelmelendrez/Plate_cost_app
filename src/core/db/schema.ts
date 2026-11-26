@@ -8,6 +8,7 @@ import {
   RECIPE_UNITS,
   RECIPE_YIELD_UNITS,
 } from '@core/costing/units';
+import { PRICE_ROUNDING_RULES } from '@core/costing/suggestedPrice';
 
 const uuidDefault = sql`(lower(hex(randomblob(16))))`;
 
@@ -123,6 +124,9 @@ export const globalSettings = sqliteTable('global_settings', {
   feesOnTaxIncludedPrice: integer('fees_on_tax_included_price', { mode: 'boolean' })
     .notNull()
     .default(false),
+  roundingRule: text('rounding_rule', { enum: [...PRICE_ROUNDING_RULES, 'auto'] })
+    .notNull()
+    .default('auto'),
   isInitialized: integer('is_initialized', { mode: 'boolean' }).notNull().default(false),
 });
 

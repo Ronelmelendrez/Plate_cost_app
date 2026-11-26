@@ -6,7 +6,11 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createDrizzleClient } from '@core/db/client';
-import { formatDecimalInput } from '@core/costing/money';
+import { currencyFractionDigits, formatDecimalInput } from '@core/costing/money';
+import {
+  getAvailableRoundingRules,
+  getDefaultRoundingRule,
+} from '@core/costing/suggestedPrice';
 import {
   getAppSettings,
   listSalesChannels,
@@ -55,6 +59,10 @@ export default function SettingsScreen() {
         wastePct: storedSettings.wastePct,
         targetMarginPct: storedSettings.targetMarginPct,
         feesOnTaxIncludedPrice: storedSettings.feesOnTaxIncludedPrice,
+        roundingRule:
+          storedSettings.roundingRule === 'auto'
+            ? getDefaultRoundingRule(storedSettings.currencyCode, storedSettings.locale)
+            : storedSettings.roundingRule,
       };
       setSettings(draft);
       setSavedCurrencyCode(storedSettings.currencyCode);
@@ -86,6 +94,19 @@ export default function SettingsScreen() {
     setIsSaved(false);
     setFormError('');
     setSettings((current) => (current ? { ...current, ...patch } : current));
+  };
+
+  const updateCurrencyCode = (value: string) => {
+    if (!settings) {
+      return;
+    }
+    const currencyCode = value.toUpperCase().slice(0, 3);
+    updateSettings({
+      currencyCode,
+      ...(/^[A-Z]{3}$/.test(currencyCode)
+        ? { roundingRule: getDefaultRoundingRule(currencyCode, settings.locale) }
+        : {}),
+    });
   };
 
   const updateChannel = (id: string, patch: Partial<SalesChannelDraft>) => {
@@ -136,6 +157,14 @@ export default function SettingsScreen() {
   if (isLoading && !settings) {
     return <SafeAreaView edges={['top']} className="flex-1 bg-bg" />;
   }
+
+  const currencyForRounding =
+    settings && /^[A-Z]{3}$/.test(settings.currencyCode)
+      ? settings.currencyCode
+      : savedCurrencyCode;
+  const roundingRules = settings
+    ? getAvailableRoundingRules(currencyFractionDigits(currencyForRounding, settings.locale))
+    : [];
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
@@ -207,9 +236,7 @@ export default function SettingsScreen() {
               <TextField
                 label={t('settings.currencyCode')}
                 value={settings.currencyCode}
-                onChangeText={(currencyCode) =>
-                  updateSettings({ currencyCode: currencyCode.toUpperCase().slice(0, 3) })
-                }
+                onChangeText={updateCurrencyCode}
                 helperText={t('settings.currencyHelp')}
                 accessibilityLabel={t('settings.currencyCode')}
               />
@@ -326,6 +353,32 @@ export default function SettingsScreen() {
                     keyboardType="decimal-pad"
                     suffix="ml"
                   />
+                  <View className="gap-2">
+                    <Text className="text-base font-semibold text-ink">
+                      {t('settings.suggestedPriceRounding')}
+                    </Text>
+                    <View className="flex-row flex-wrap gap-2">
+                      {roundingRules.map((roundingRule) => (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{
+                            selected: settings.roundingRule === roundingRule,
+                          }}
+                          accessibilityLabel={t(`settings.roundingRules.${roundingRule}`)}
+                          onPress={() => updateSettings({ roundingRule })}
+                          key={roundingRule}
+                          className={`min-h-12 items-center justify-center rounded-xl border px-3 ${
+                            settings.roundingRule === roundingRule
+                              ? 'border-brand bg-surface'
+                              : 'border-line bg-surface'
+                          }`}>
+                          <Text className="text-sm text-ink">
+                            {t(`settings.roundingRules.${roundingRule}`)}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
                   <Pressable
                     accessibilityRole="switch"
                     accessibilityState={{ checked: settings.feesOnTaxIncludedPrice }}

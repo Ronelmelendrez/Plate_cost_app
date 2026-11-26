@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import {
   calculateRecipeCost,
@@ -431,6 +431,70 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
     }
 
     return storedRecipeId;
+  });
+}
+
+export async function saveRecipeChannelPrice(
+  database: AppDatabase,
+  recipeId: string,
+  channelId: string,
+  priceMinor: number,
+) {
+  if (!Number.isSafeInteger(priceMinor) || priceMinor <= 0) {
+    throw new Error('A recipe channel price must be a positive minor-unit amount.');
+  }
+
+  await database.transaction(async (transaction) => {
+    const [recipe] = await transaction
+      .select({ id: recipes.id, isSubRecipe: recipes.isSubRecipe })
+      .from(recipes)
+      .where(eq(recipes.id, recipeId))
+      .limit(1);
+    if (!recipe) {
+      throw new Error('This recipe no longer exists.');
+    }
+    if (recipe.isSubRecipe) {
+      throw new Error('Only dishes can have sales channel prices.');
+    }
+
+    const [channel] = await transaction
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+    if (!channel) {
+      throw new Error('This sales channel no longer exists.');
+    }
+
+    const [existingPrice] = await transaction
+      .select({ id: recipeChannelPrices.id })
+      .from(recipeChannelPrices)
+      .where(
+        and(
+          eq(recipeChannelPrices.recipeId, recipeId),
+          eq(recipeChannelPrices.channelId, channelId),
+        ),
+      )
+      .limit(1);
+    if (existingPrice) {
+      await transaction
+        .update(recipeChannelPrices)
+        .set({ priceMinor })
+        .where(eq(recipeChannelPrices.id, existingPrice.id));
+    } else {
+      await transaction.insert(recipeChannelPrices).values({
+        recipeId,
+        channelId,
+        priceMinor,
+      });
+    }
+
+    if (channelId === 'dine-in') {
+      await transaction
+        .update(recipes)
+        .set({ sellingPriceMinor: priceMinor, updatedAt: new Date().toISOString() })
+        .where(eq(recipes.id, recipeId));
+    }
   });
 }
 
