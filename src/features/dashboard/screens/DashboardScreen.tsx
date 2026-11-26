@@ -409,7 +409,16 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
-      <DashboardHeader query={query} onChangeQuery={setQuery} />
+      <DashboardHeader
+        query={query}
+        onChangeQuery={setQuery}
+        onOpenAnalytics={() =>
+          router.push({
+            pathname: '/analytics',
+            params: { channelId: selectedChannelId },
+          })
+        }
+      />
       <FlashList
         data={visibleRows}
         keyExtractor={(item) => item.recipeId}

@@ -7,22 +7,17 @@ import { Colors } from '@shared/theme';
 export function DashboardHeader({
   query,
   onChangeQuery,
+  onOpenAnalytics,
 }: {
   query: string;
   onChangeQuery: (query: string) => void;
+  onOpenAnalytics: () => void;
 }) {
   const { t } = useTranslation();
 
   return (
     <View className="border-b border-line bg-surface px-4 py-3">
       <View className="flex-row items-center gap-3">
-        <View className="h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand">
-          <SymbolView
-            name={{ ios: 'chart.bar.fill', android: 'dashboard', web: 'dashboard' }}
-            tintColor={Colors.light.surface}
-            size={24}
-          />
-        </View>
         <View className="min-h-12 flex-1 flex-row items-center rounded-xl border border-line bg-bg px-3">
           <SymbolView
             name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
@@ -52,6 +47,17 @@ export function DashboardHeader({
             </Pressable>
           ) : null}
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('analytics.open')}
+          onPress={onOpenAnalytics}
+          className="h-12 w-12 items-center justify-center rounded-xl border border-line bg-bg">
+          <SymbolView
+            name={{ ios: 'chart.bar.xaxis', android: 'analytics', web: 'analytics' }}
+            tintColor={Colors.light.tint}
+            size={22}
+          />
+        </Pressable>
       </View>
     </View>
   );

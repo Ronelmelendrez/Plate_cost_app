@@ -71,6 +71,7 @@ Small food businesses worldwide (cafés, bakeries, street food stalls, small res
 - Channel switch at top (Dine-in / Delivery) so the same dish shows two margins.
 - Target margin slider shows how many dishes fail.
 - Sort by worst margin first (default).
+- Analytics overview shows average margin, dishes below target, and the best and lowest margins for the selected channel, using saved prices only.
 
 ### F5. What-If Price Slider
 
