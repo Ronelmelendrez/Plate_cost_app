@@ -58,6 +58,56 @@ export function parseDecimal(value: string, locale: string) {
   }
 }
 
+function formatGroupedInteger(integerPart: string, locale: string) {
+  const isNegative = integerPart.startsWith('-');
+  const digits = isNegative ? integerPart.slice(1) : integerPart;
+  const formatter = new Intl.NumberFormat(locale, {
+    useGrouping: true,
+    maximumFractionDigits: 0,
+  });
+  const parts = formatter.formatToParts(isNegative ? -123456789 : 123456789);
+  const integerParts = parts.filter((part) => part.type === 'integer');
+  const groupSeparator = parts.find((part) => part.type === 'group')?.value;
+  const groupSizes = integerParts.map((part) => Array.from(part.value).length);
+  const primaryGroupSize = groupSizes[groupSizes.length - 1] ?? digits.length;
+  const secondaryGroupSize =
+    groupSizes.length > 1 ? groupSizes[groupSizes.length - 2] : primaryGroupSize;
+  const digitCharacters = Array.from(digits);
+  const groups: string[] = [];
+
+  if (groupSeparator && primaryGroupSize > 0) {
+    let end = digitCharacters.length;
+    let groupSize = primaryGroupSize;
+    while (end > groupSize) {
+      groups.unshift(digitCharacters.slice(end - groupSize, end).join(''));
+      end -= groupSize;
+      groupSize = secondaryGroupSize;
+    }
+    groups.unshift(digitCharacters.slice(0, end).join(''));
+  } else {
+    groups.push(digits);
+  }
+
+  const digitFormatter = new Intl.NumberFormat(locale, {
+    useGrouping: false,
+    maximumFractionDigits: 0,
+  });
+  const localizedGroups = groups.map((group) =>
+    Array.from(group, (digit) => digitFormatter.format(Number(digit))).join(''),
+  );
+  const firstIntegerIndex = parts.findIndex((part) => part.type === 'integer');
+  let lastIntegerIndex = firstIntegerIndex;
+  for (let index = firstIntegerIndex + 1; index < parts.length; index += 1) {
+    if (parts[index]?.type === 'integer') {
+      lastIntegerIndex = index;
+    }
+  }
+  const prefix = parts.slice(0, firstIntegerIndex).map((part) => part.value).join('');
+  const suffix = parts.slice(lastIntegerIndex + 1).map((part) => part.value).join('');
+
+  return `${prefix}${localizedGroups.join(groupSeparator ?? '')}${suffix}`;
+}
+
 export function formatDecimalInput(value: string, locale: string) {
   const parsed = parseDecimal(value, locale);
   if (!parsed) {
@@ -65,11 +115,7 @@ export function formatDecimalInput(value: string, locale: string) {
   }
 
   const [integerPart, fractionalPart] = parsed.toFixed().split('.');
-  const groupingFormatter = new Intl.NumberFormat(locale, {
-    useGrouping: true,
-    maximumFractionDigits: 0,
-  });
-  const groupedInteger = groupingFormatter.format(BigInt(integerPart));
+  const groupedInteger = formatGroupedInteger(integerPart, locale);
   if (!fractionalPart) {
     return groupedInteger;
   }

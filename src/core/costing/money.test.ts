@@ -23,6 +23,14 @@ describe('decimal number entry', () => {
 
   it('formats valid input with the selected locale after editing', () => {
     expect(formatDecimalInput('1234,5', 'de-DE')).toBe('1.234,5');
+    expect(formatDecimalInput('-1234.5', 'en-US')).toBe('-1,234.5');
+  });
+
+  it('groups large integers exactly without converting them to Number or BigInt', () => {
+    expect(formatDecimalInput('123456789012345678901234.56', 'en-US')).toBe(
+      '123,456,789,012,345,678,901,234.56',
+    );
+    expect(formatDecimalInput('123456789', 'en-IN')).toBe('12,34,56,789');
   });
 });
 
