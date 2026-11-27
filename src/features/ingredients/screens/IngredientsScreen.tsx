@@ -19,6 +19,12 @@ import {
   setIngredientFavourite,
   type Ingredient,
 } from '@features/ingredients/data/ingredientRepository';
+import {
+  listPackagingItems,
+  markPackagingRecent,
+  setPackagingFavourite,
+  type PackagingItem,
+} from '@features/packaging';
 import { getAppSettings, type AppSettings } from '@features/settings';
 import { Colors, HERO_BOTTOM, HERO_GRADIENT, HERO_TOP } from '@shared/theme';
 
@@ -138,37 +144,112 @@ function IngredientRow({
   );
 }
 
+function PackagingLibraryRow({
+  item,
+  currency,
+  locale,
+  onPress,
+  onToggleFavourite,
+}: {
+  item: PackagingItem;
+  currency: string;
+  locale: string;
+  onPress: () => void;
+  onToggleFavourite: () => void;
+}) {
+  const { t } = useTranslation();
+  const fractionDigits = currencyFractionDigits(currency, locale);
+  const packPrice = new Decimal(item.packPriceMinor).div(
+    new Decimal(10).pow(fractionDigits),
+  );
+  const costPerPiece = packPrice.div(item.piecesPerPack);
+
+  return (
+    <View className="mb-3 flex-row items-center gap-3 rounded-3xl border border-line bg-surface p-3 shadow-sm">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('packaging.itemSummary', {
+          name: item.name,
+          cost: formatCurrency(costPerPiece, currency, locale),
+          count: item.piecesPerPack,
+        })}
+        onPress={onPress}
+        className="min-h-14 flex-1 justify-center gap-1">
+        <Text numberOfLines={1} className="font-inter-bold text-[16px] text-ink">
+          {item.name}
+        </Text>
+        <Text numberOfLines={1} className="font-inter text-[13px] text-muted">
+          {t('packaging.costPerPiece', {
+            cost: formatCurrency(costPerPiece, currency, locale),
+          })}
+          {' · '}
+          {t('packaging.packSize', { count: item.piecesPerPack })}
+        </Text>
+      </Pressable>
+      <View className="shrink-0 items-end">
+        <Text className="font-inter-extrabold text-[15px] text-ink">
+          {formatCurrency(packPrice, currency, locale)}
+        </Text>
+        <Text className="font-inter text-[11px] text-muted">{t('packaging.packPrice')}</Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          item.isFavourite ? t('ingredients.removeFavourite') : t('ingredients.addFavourite')
+        }
+        onPress={onToggleFavourite}
+        className="h-11 w-11 shrink-0 items-center justify-center rounded-full bg-bg">
+        <SymbolView
+          name={
+            item.isFavourite
+              ? { ios: 'heart.fill', android: 'favorite', web: 'favorite' }
+              : { ios: 'heart', android: 'favorite_border', web: 'favorite_border' }
+          }
+          tintColor={item.isFavourite ? Colors.light.tint : Colors.light.tabIconDefault}
+          size={20}
+        />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function IngredientsScreen() {
   const sqlite = useSQLiteContext();
   const database = useMemo(() => createDrizzleClient(sqlite), [sqlite]);
   const { t } = useTranslation();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [packagingItems, setPackagingItems] = useState<PackagingItem[]>([]);
+  const [libraryView, setLibraryView] = useState<'ingredients' | 'packaging'>('ingredients');
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadIngredients = useCallback(async () => {
+  const loadLibrary = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
       setAppSettings(await getAppSettings(database));
-      setIngredients(await listIngredients(database, search));
+      if (libraryView === 'ingredients') {
+        setIngredients(await listIngredients(database, search));
+      } else {
+        setPackagingItems(await listPackagingItems(database, search));
+      }
     } catch (loadError) {
       console.error('Unable to load ingredients.', loadError);
       setError(t('ingredients.loadError'));
     } finally {
       setIsLoading(false);
     }
-  }, [database, search, t]);
+  }, [database, libraryView, search, t]);
 
   const currency = appSettings?.currencyCode ?? deviceCurrency;
   const locale = appSettings?.locale ?? deviceLocale;
 
   useFocusEffect(
     useCallback(() => {
-      void loadIngredients();
-    }, [loadIngredients]),
+      void loadLibrary();
+    }, [loadLibrary]),
   );
 
   const openIngredient = async (ingredient: Ingredient) => {
@@ -184,14 +265,37 @@ export default function IngredientsScreen() {
   const toggleFavourite = async (ingredient: Ingredient) => {
     try {
       await setIngredientFavourite(database, ingredient.id, !ingredient.isFavourite);
-      await loadIngredients();
+      await loadLibrary();
     } catch (updateError) {
       console.error('Unable to update ingredient favourite.', updateError);
       setError(t('ingredients.updateError'));
     }
   };
 
-  const hasIngredients = ingredients.length > 0;
+  const openPackaging = async (item: PackagingItem) => {
+    try {
+      await markPackagingRecent(database, item.id);
+    } catch (updateError) {
+      console.error('Unable to update recent packaging.', updateError);
+      setError(t('packaging.updateError'));
+    }
+    router.push({ pathname: '/packaging/[id]', params: { id: item.id } });
+  };
+
+  const togglePackagingFavourite = async (item: PackagingItem) => {
+    try {
+      await setPackagingFavourite(database, item.id, !item.isFavourite);
+      await loadLibrary();
+    } catch (updateError) {
+      console.error('Unable to update packaging favourite.', updateError);
+      setError(t('packaging.updateError'));
+    }
+  };
+
+  const isIngredientsView = libraryView === 'ingredients';
+  const visibleCount = isIngredientsView ? ingredients.length : packagingItems.length;
+  const hasItems = visibleCount > 0;
+  const listData = isIngredientsView ? ingredients : packagingItems;
 
   const listHeader = (
     <View>
@@ -199,7 +303,7 @@ export default function IngredientsScreen() {
       <LinearGradient
         colors={[HERO_BOTTOM, Colors.light.background] as const}
         locations={[0.25, 1]}
-        style={{ height: hasIngredients ? 96 : 72 }}
+        style={{ height: hasItems ? 96 : 72 }}
       />
 
       <View className="mt-4 gap-3 px-4">
@@ -211,7 +315,7 @@ export default function IngredientsScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('ingredients.retry')}
-              onPress={() => void loadIngredients()}
+              onPress={() => void loadLibrary()}
               className="min-h-11 justify-center">
               <Text className="font-inter-semibold text-[14px] text-brand">
                 {t('ingredients.retry')}
@@ -220,14 +324,16 @@ export default function IngredientsScreen() {
           </View>
         ) : null}
 
-        {hasIngredients ? (
+        {hasItems ? (
           <View className="flex-row items-center justify-between pb-1">
             <Text className="font-inter-extrabold text-[18px] text-ink">
-              {t('ingredients.listHeading')}
+              {t(isIngredientsView ? 'ingredients.listHeading' : 'packaging.listHeading')}
             </Text>
             <View className="rounded-full bg-brandSoft px-2.5 py-1">
               <Text className="font-inter-bold text-[11px] text-brand">
-                {t('ingredients.totalCount', { count: ingredients.length })}
+                {t(isIngredientsView ? 'ingredients.totalCount' : 'packaging.totalCount', {
+                  count: visibleCount,
+                })}
               </Text>
             </View>
           </View>
@@ -249,8 +355,14 @@ export default function IngredientsScreen() {
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t('ingredients.addIngredient')}
-            onPress={() => router.push('/ingredient/new')}
+            accessibilityLabel={t(
+              isIngredientsView ? 'ingredients.addIngredient' : 'packaging.addItem',
+            )}
+            onPress={() =>
+              isIngredientsView
+                ? router.push('/ingredient/new')
+                : router.push({ pathname: '/packaging/[id]', params: { id: 'new' } })
+            }
             className="h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/15">
             <SymbolView
               name={{ ios: 'plus', android: 'add', web: 'add' }}
@@ -260,8 +372,28 @@ export default function IngredientsScreen() {
           </Pressable>
         </View>
 
+        <View className="mt-4 flex-row rounded-2xl bg-white/15 p-1">
+          {(['ingredients', 'packaging'] as const).map((view) => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: libraryView === view }}
+              key={view}
+              onPress={() => setLibraryView(view)}
+              className={`min-h-11 flex-1 items-center justify-center rounded-xl px-3 ${
+                libraryView === view ? 'bg-surface' : ''
+              }`}>
+              <Text
+                className={`font-inter-semibold text-sm ${
+                  libraryView === view ? 'text-brand' : 'text-white'
+                }`}>
+                {t(view === 'ingredients' ? 'ingredients.title' : 'packaging.title')}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Text className="mt-1 font-inter text-[13px] leading-[18px] text-white">
-          {t('ingredients.subtitle')}
+          {t(isIngredientsView ? 'ingredients.subtitle' : 'packaging.subtitle')}
         </Text>
 
         <View className="mt-3.5 flex-row items-center rounded-2xl bg-surface px-3 shadow-md">
@@ -295,19 +427,29 @@ export default function IngredientsScreen() {
         </View>
       </LinearGradient>
 
-      <FlashList
-        data={ingredients}
+      <FlashList<Ingredient | PackagingItem>
+        data={listData}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => (
-          <IngredientRow
-            ingredient={item}
-            currency={currency}
-            locale={locale}
-            onPress={() => void openIngredient(item)}
-            onToggleFavourite={() => void toggleFavourite(item)}
-          />
-        )}
+        renderItem={({ item }) =>
+          'purchaseUnit' in item ? (
+            <IngredientRow
+              ingredient={item}
+              currency={currency}
+              locale={locale}
+              onPress={() => void openIngredient(item)}
+              onToggleFavourite={() => void toggleFavourite(item)}
+            />
+          ) : (
+            <PackagingLibraryRow
+              item={item}
+              currency={currency}
+              locale={locale}
+              onPress={() => void openPackaging(item)}
+              onToggleFavourite={() => void togglePackagingFavourite(item)}
+            />
+          )
+        }
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           isLoading ? (
@@ -329,7 +471,7 @@ export default function IngredientsScreen() {
                 </Text>
               </Pressable>
             </View>
-          ) : (
+          ) : isIngredientsView ? (
             <View className="items-center gap-2 px-6 py-10">
               <View className="h-14 w-14 items-center justify-center rounded-full bg-brandSoft">
                 <SymbolView
@@ -355,6 +497,26 @@ export default function IngredientsScreen() {
                 className="mt-2 min-h-12 items-center justify-center rounded-2xl bg-brand px-6 shadow-sm">
                 <Text className="font-inter-semibold text-[15px] text-white">
                   {t('ingredients.addIngredient')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View className="items-center gap-2 px-6 py-10">
+              <Text className="mt-1 font-inter-bold text-[17px] text-ink">
+                {t('packaging.emptyTitle')}
+              </Text>
+              <Text className="text-center font-inter text-[14px] leading-[20px] text-muted">
+                {t('packaging.emptyBody')}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('packaging.addItem')}
+                onPress={() =>
+                  router.push({ pathname: '/packaging/[id]', params: { id: 'new' } })
+                }
+                className="mt-2 min-h-12 items-center justify-center rounded-2xl bg-brand px-6 shadow-sm">
+                <Text className="font-inter-semibold text-[15px] text-white">
+                  {t('packaging.addItem')}
                 </Text>
               </Pressable>
             </View>

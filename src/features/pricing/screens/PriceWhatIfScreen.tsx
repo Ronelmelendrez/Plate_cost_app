@@ -29,6 +29,12 @@ import { Colors } from '@shared/theme';
 
 type RecipePricingData = NonNullable<Awaited<ReturnType<typeof getRecipeEditorData>>>;
 
+function getChannelCost(data: RecipePricingData, channelId: string) {
+  return data.cost.foodCostPerPortion.plus(
+    data.cost.packagingCostByChannel[channelId] ?? new Decimal(0),
+  );
+}
+
 function getSliderStep(rangeMinor: number, fractionDigits: number) {
   const rawStep = Math.max(1, Math.ceil(rangeMinor / 60));
   const minimumStep = fractionDigits === 0 ? 10 : 1;
@@ -173,7 +179,10 @@ export default function PriceWhatIfScreen() {
             (price) => price.channelId === selectedChannel.id,
           )?.priceMinor
         : undefined;
-      const costMinor = recipeData.cost.costPerPortion
+      const selectedCost = selectedChannel
+        ? getChannelCost(recipeData, selectedChannel.id)
+        : recipeData.cost.foodCostPerPortion;
+      const costMinor = selectedCost
         .mul(new Decimal(10).pow(currentFractionDigits))
         .ceil()
         .toNumber();
@@ -221,7 +230,7 @@ export default function PriceWhatIfScreen() {
       return undefined;
     }
     return calculateSuggestedPrice({
-      costPerPortion: data.cost.costPerPortion,
+      costPerPortion: getChannelCost(data, channel.id),
       targetMarginPct: data.settings.targetMarginPct,
       commissionPct: channel.commissionPct,
       paymentFeePct: channel.paymentFeePct,
@@ -238,7 +247,7 @@ export default function PriceWhatIfScreen() {
       return undefined;
     }
     return getPriceRange(
-      data.cost.costPerPortion,
+      getChannelCost(data, channelId),
       fractionDigits,
       [
         ...data.channelPrices.map((price) => price.priceMinor),
@@ -246,14 +255,14 @@ export default function PriceWhatIfScreen() {
       ],
       suggestedPrice?.kind === 'suggested' ? suggestedPrice.priceMinor : undefined,
     );
-  }, [data, fractionDigits, priceMinor, suggestedPrice]);
+  }, [channelId, data, fractionDigits, priceMinor, suggestedPrice]);
 
   let pricing: ReturnType<typeof calculateChannelPricing> | undefined;
   let calculationFailed = false;
   if (data && channel && priceMinor !== null) {
     try {
       pricing = calculateChannelPricing({
-        costPerPortion: data.cost.costPerPortion,
+        costPerPortion: getChannelCost(data, channel.id),
         priceMinor,
         fractionDigits,
         commissionPct: channel.commissionPct,
@@ -281,8 +290,9 @@ export default function PriceWhatIfScreen() {
     const nextPrice = data?.channelPrices.find(
       (price) => price.channelId === nextChannel.id,
     )?.priceMinor;
-    const costMinor = data?.cost.costPerPortion
-      .mul(new Decimal(10).pow(fractionDigits))
+    const channelCost = data ? getChannelCost(data, nextChannel.id) : undefined;
+    const costMinor = channelCost
+      ?.mul(new Decimal(10).pow(fractionDigits))
       .ceil()
       .toNumber();
     setChannelId(nextChannel.id);
@@ -473,7 +483,7 @@ export default function PriceWhatIfScreen() {
             <View className="flex-row justify-between gap-3">
               <Text className="flex-1 font-inter text-[14px] text-muted">{t('pricing.costPerPlate')}</Text>
               <Text className="font-inter-semibold text-[15px] text-ink">
-                {formatCurrency(data.cost.costPerPortion, currency, locale)}
+                {formatCurrency(getChannelCost(data, channel.id), currency, locale)}
               </Text>
             </View>
             <View className="flex-row justify-between gap-3">

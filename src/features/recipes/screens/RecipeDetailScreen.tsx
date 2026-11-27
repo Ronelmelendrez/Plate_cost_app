@@ -19,6 +19,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
   calculateRecipeCost,
+  InvalidPackagingOnSubRecipeError,
   InvalidSubRecipeError,
   MissingRecipeReferenceError,
   RecipeCycleError,
@@ -51,12 +52,16 @@ import type { Ingredient } from '@features/ingredients/data/ingredientRepository
 import {
   getRecipeEditorData,
   getRecipeWorkspace,
-  savePackagingItem,
   saveRecipe,
-  type PackagingItem,
   type Recipe,
   type RecipeItemDraft,
 } from '@features/recipes/data/recipeRepository';
+import {
+  PackagingPicker,
+  PackagingRow,
+  type PackagingItem,
+  type RecipePackagingDraft,
+} from '@features/packaging';
 import { persistRecipeImage, removeStoredRecipeImage } from '@features/recipes/data/recipeImages';
 import { RecipeCostSummary } from '@features/recipes/components/RecipeCostSummary';
 import { RecipeItemPickerSheet } from '@features/recipes/components/RecipeItemPickerSheet';
@@ -129,6 +134,7 @@ export default function RecipeDetailScreen() {
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [expandedChannelPriceId, setExpandedChannelPriceId] = useState<string>();
   const [items, setItems] = useState<RecipeItemDraft[]>([]);
+  const [packaging, setPackaging] = useState<RecipePackagingDraft[]>([]);
   const [notes, setNotes] = useState('');
   const [laborMinutes, setLaborMinutes] = useState('0');
   const [laborRate, setLaborRate] = useState('0');
@@ -137,6 +143,8 @@ export default function RecipeDetailScreen() {
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [isItemPickerOpen, setIsItemPickerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RecipeItemDraft>();
+  const [isPackagingPickerOpen, setIsPackagingPickerOpen] = useState(false);
+  const [editingPackaging, setEditingPackaging] = useState<RecipePackagingDraft>();
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [formError, setFormError] = useState('');
   const [isLoadError, setIsLoadError] = useState(false);
@@ -164,6 +172,7 @@ export default function RecipeDetailScreen() {
       if (isNew) {
         const data = await getRecipeWorkspace(database);
         setWorkspace(data);
+        setPackaging([]);
         setImageUri(null);
         setSavedImageUri(null);
         setPendingPhoto(null);
@@ -207,6 +216,7 @@ export default function RecipeDetailScreen() {
         setBatchYieldQuantity(data.recipe.batchYieldQuantity);
         setBatchYieldUnit(data.recipe.batchYieldUnit);
         setItems(data.items);
+        setPackaging(data.packaging);
         setNotes(data.recipe.notes ?? '');
         setLaborMinutes(data.recipe.laborMinutes);
         setLaborRate(
@@ -232,7 +242,7 @@ export default function RecipeDetailScreen() {
   );
 
   const costPreview = useMemo(() => {
-    if (!workspace || items.length === 0) {
+    if (!workspace || (items.length === 0 && packaging.length === 0)) {
       return { result: undefined, error: undefined };
     }
     try {
@@ -267,20 +277,26 @@ export default function RecipeDetailScreen() {
             },
           };
         }
-        if (item.kind === 'recipe') {
-          const child = recipeInputs.get(item.referenceId);
-          return {
-            ...base,
-            kind: 'recipe',
-            name: workspace.recipes.find((candidate) => candidate.id === item.referenceId)?.name ?? '',
-            detail: child,
-          };
-        }
+        const child = recipeInputs.get(item.referenceId);
         return {
           ...base,
-          kind: 'packaging',
-          name: workspace.packagingItems.find((candidate) => candidate.id === item.referenceId)?.name ?? '',
-          packaging: workspace.packagingItems.find((candidate) => candidate.id === item.referenceId),
+          kind: 'recipe',
+          name: workspace.recipes.find((candidate) => candidate.id === item.referenceId)?.name ?? '',
+          detail: child,
+        };
+      });
+      const packagingLines = packaging.map((line) => {
+        const item = workspace.packagingItems.find(
+          (candidate) => candidate.id === line.packagingId,
+        );
+        if (!item) {
+          throw new MissingRecipeReferenceError();
+        }
+        return {
+          ...line,
+          name: item.name,
+          packPriceMinor: item.packPriceMinor,
+          piecesPerPack: item.piecesPerPack,
         };
       });
 
@@ -294,7 +310,9 @@ export default function RecipeDetailScreen() {
         laborRateMinor: toMinorUnits(parseDecimal(laborRate, locale) ?? new Decimal(0), fractionDigits) ?? 0,
         overheadMode,
         overheadValue,
+        channelIds: workspace.channels.map((channel) => channel.id),
         items: costLines,
+        packaging: packagingLines,
       };
       return {
         result: calculateRecipeCost(
@@ -315,6 +333,9 @@ export default function RecipeDetailScreen() {
       if (costError instanceof InvalidSubRecipeError) {
         return { result: undefined, error: t('recipes.invalidSubRecipe') };
       }
+      if (costError instanceof InvalidPackagingOnSubRecipeError) {
+        return { result: undefined, error: t('packaging.subRecipeNotAllowed') };
+      }
       if (costError instanceof MissingRecipeReferenceError) {
         return { result: undefined, error: t('recipes.missingItem') };
       }
@@ -334,6 +355,7 @@ export default function RecipeDetailScreen() {
     laborRate,
     overheadMode,
     overheadValue,
+    packaging,
     portions,
     t,
     workspace,
@@ -355,7 +377,10 @@ export default function RecipeDetailScreen() {
     previewPriceMinor !== null &&
     settings
       ? calculateChannelPricing({
-          costPerPortion: costPreview.result.costPerPortion,
+        costPerPortion: costPreview.result.foodCostPerPortion.plus(
+          costPreview.result.packagingCostByChannel[previewChannel.channel.id] ??
+            new Decimal(0),
+        ),
           priceMinor: previewPriceMinor,
           fractionDigits,
           commissionPct: previewChannel.channel.commissionPct,
@@ -383,6 +408,22 @@ export default function RecipeDetailScreen() {
     setFormErrors((current) => ({ ...current, items: undefined }));
     setIsItemPickerOpen(false);
     setEditingItem(undefined);
+  };
+
+  const openPackagingPicker = (line?: RecipePackagingDraft) => {
+    setEditingPackaging(line);
+    setIsPackagingPickerOpen(true);
+  };
+
+  const addPackagingToDraft = (line: RecipePackagingDraft) => {
+    setPackaging((current) => {
+      const existingIndex = current.findIndex((entry) => entry.id === line.id);
+      return existingIndex >= 0
+        ? current.map((entry, index) => (index === existingIndex ? line : entry))
+        : [...current, line];
+    });
+    setIsPackagingPickerOpen(false);
+    setEditingPackaging(undefined);
   };
 
   const toggleChannel = (channelId: string) => {
@@ -475,6 +516,19 @@ export default function RecipeDetailScreen() {
     if (items.some((item) => !parseDecimal(item.quantity, locale)?.gt(0))) {
       errors.items = t('recipes.itemRequired');
     }
+    if (
+      packaging.some(
+        (line) =>
+          !parseDecimal(line.quantityPerPortion, locale)?.gt(0) ||
+          (line.appliesTo === 'selected' && line.channelIds.length === 0),
+      )
+    ) {
+      errors.items = t('packaging.lineRequired');
+    }
+    if (isSubRecipe && packaging.length > 0) {
+      setFormError(t('packaging.removeBeforeSubRecipe'));
+      return;
+    }
 
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
@@ -499,7 +553,7 @@ export default function RecipeDetailScreen() {
           workspace.wastePct,
           fractionDigits,
           workspace.unitSizes,
-        ).costPerYieldUnit;
+        ).foodCostPerYieldUnit;
       } catch (costError) {
         console.error('Unable to calculate the existing sub-recipe cost.', costError);
         setFormError(t('recipes.costError'));
@@ -551,6 +605,12 @@ export default function RecipeDetailScreen() {
           ...item,
           quantity: parseDecimal(item.quantity, locale)?.toString() ?? item.quantity,
         })),
+        packaging: packaging.map((line) => ({
+          ...line,
+          quantityPerPortion:
+            parseDecimal(line.quantityPerPortion, locale)?.toString() ??
+            line.quantityPerPortion,
+        })),
       });
       newlyPersistedImageUri = null;
       setSavedImageUri(imageUriToSave);
@@ -573,7 +633,7 @@ export default function RecipeDetailScreen() {
           if (!updatedSubRecipe) {
             throw new Error('The saved sub-recipe could not be reloaded.');
           }
-          if (!previousSubRecipeCost.eq(updatedSubRecipe.cost.costPerYieldUnit)) {
+          if (!previousSubRecipeCost.eq(updatedSubRecipe.cost.foodCostPerYieldUnit)) {
             const report = await getPriceChangeImpact(database, {
               type: 'recipe',
               id: savedRecipeId,
@@ -605,6 +665,8 @@ export default function RecipeDetailScreen() {
         setFormError(t('recipes.missingItem'));
       } else if (saveError instanceof InvalidSubRecipeError) {
         setFormError(t('recipes.invalidSubRecipe'));
+      } else if (saveError instanceof InvalidPackagingOnSubRecipeError) {
+        setFormError(t('packaging.subRecipeNotAllowed'));
       } else {
         setFormError(t('recipes.saveError'));
       }
@@ -620,26 +682,7 @@ export default function RecipeDetailScreen() {
     if (item.kind === 'ingredient') {
       return workspace.ingredients.find((candidate) => candidate.id === item.referenceId)?.name ?? t('recipes.missingItemName');
     }
-    if (item.kind === 'recipe') {
-      return workspace.recipes.find((candidate) => candidate.id === item.referenceId)?.name ?? t('recipes.missingItemName');
-    }
-    return workspace.packagingItems.find((candidate) => candidate.id === item.referenceId)?.name ?? t('recipes.missingItemName');
-  };
-
-  const handleCreatePackaging = async (itemName: string, costMinor: number) => {
-    const created = await savePackagingItem(database, itemName, costMinor);
-    setWorkspace((current) =>
-      current
-        ? {
-            ...current,
-            packagingItems: [
-              ...current.packagingItems,
-              { id: created.id, name: itemName, costMinor, updatedAt: new Date().toISOString() },
-            ],
-          }
-        : current,
-    );
-    return { ...created, name: itemName, costMinor, updatedAt: new Date().toISOString() };
+    return workspace.recipes.find((candidate) => candidate.id === item.referenceId)?.name ?? t('recipes.missingItemName');
   };
 
   const removeDraftItem = (item: RecipeItemDraft) => {
@@ -661,8 +704,11 @@ export default function RecipeDetailScreen() {
         if (!channel) {
           return [];
         }
+        const channelCost = data.cost.foodCostPerPortion.plus(
+          data.cost.packagingCostByChannel[price.channelId] ?? new Decimal(0),
+        );
         const pricing = calculateChannelPricing({
-          costPerPortion: data.cost.costPerPortion,
+          costPerPortion: channelCost,
           priceMinor: price.priceMinor,
           fractionDigits,
           commissionPct: channel.commissionPct,
@@ -675,6 +721,7 @@ export default function RecipeDetailScreen() {
           {
             name: channel.name,
             price: formatCurrency(pricing.grossPrice, currency, locale),
+            cost: formatCurrency(channelCost, currency, locale),
             fees: formatCurrency(pricing.fees, currency, locale),
             profit: formatCurrency(pricing.profit, currency, locale),
             margin: `${new Intl.NumberFormat(locale, {
@@ -683,6 +730,20 @@ export default function RecipeDetailScreen() {
           },
         ];
       });
+      const defaultChannelId =
+        data.channels.find((channel) => channel.id === 'dine-in')?.id ??
+        data.channels[0]?.id;
+      const defaultPackagingCost = defaultChannelId
+        ? data.cost.packagingCostByChannel[defaultChannelId] ?? new Decimal(0)
+        : new Decimal(0);
+      const packagingBreakdown = data.channels.flatMap((channel) =>
+        (data.cost.packagingBreakdownByChannel[channel.id] ?? []).map((line) => ({
+          name: line.name,
+          quantity: line.quantityPerPortion,
+          channel: channel.name,
+          cost: formatCurrency(line.costPerPortion, currency, locale),
+        })),
+      );
 
       const html = buildRecipeCostSheetHtml({
         locale,
@@ -692,20 +753,31 @@ export default function RecipeDetailScreen() {
           timeStyle: 'short',
         }).format(new Date()),
         portions: t('pricing.portionCount', { count: data.recipe.portions }),
-        batchCost: formatCurrency(data.cost.batchCost, currency, locale),
-        costPerPlate: formatCurrency(data.cost.costPerPortion, currency, locale),
+        batchCost: formatCurrency(data.cost.batchFoodCost, currency, locale),
+        foodCostPerPlate: formatCurrency(data.cost.foodCostPerPortion, currency, locale),
+        packagingCostPerPlate: formatCurrency(defaultPackagingCost, currency, locale),
+        costPerPlate: formatCurrency(
+          data.cost.foodCostPerPortion.plus(defaultPackagingCost),
+          currency,
+          locale,
+        ),
         breakdown: data.cost.breakdown.map((line) => ({
           name: line.name,
           quantity: line.quantity,
           unit: t(`units.${line.unit}`),
           cost: formatCurrency(line.costPerPortion, currency, locale),
         })),
+        packagingBreakdown,
         channels: channelRows,
         labels: {
           generated: t('pricing.generatedAt'),
           portions: t('recipes.portions'),
           batchCost: t('recipes.costPerBatch'),
           costPerPlate: t('recipes.costPerPortion'),
+          foodCost: t('packaging.foodCost'),
+          packagingCost: t('packaging.packagingCostPerPortion'),
+          packagingBreakdown: t('packaging.packagingBlock'),
+          appliesTo: t('packaging.appliesTo'),
           costBreakdown: t('pricing.costBreakdown'),
           item: t('pricing.item'),
           quantity: t('pricing.quantity'),
@@ -713,6 +785,7 @@ export default function RecipeDetailScreen() {
           salesChannels: t('pricing.salesChannels'),
           channel: t('pricing.channel'),
           price: t('pricing.price'),
+          channelCost: t('pricing.channelCost'),
           fees: t('pricing.fees'),
           profit: t('pricing.profitPerPlate'),
           margin: t('pricing.margin'),
@@ -792,7 +865,12 @@ export default function RecipeDetailScreen() {
                 accessibilityLabel={label}
                 onPress={() => {
                   const nextIsSubRecipe = recipeType === 'sub-recipe';
+                  if (nextIsSubRecipe && packaging.length > 0) {
+                    setFormError(t('packaging.removeBeforeSubRecipe'));
+                    return;
+                  }
                   setIsSubRecipe(nextIsSubRecipe);
+                  setFormError('');
                   if (nextIsSubRecipe) {
                     setBatchYieldQuantity(portions);
                     setBatchYieldUnit('portion');
@@ -1078,6 +1156,55 @@ export default function RecipeDetailScreen() {
             </Text>
           ) : null}
         </View>
+        {!isSubRecipe ? (
+          <View className="gap-2">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-base font-inter-semibold text-ink">
+                {t('packaging.sectionTitle')}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('packaging.addLine')}
+                disabled={!workspace}
+                onPress={() => openPackagingPicker()}
+                className={`min-h-12 justify-center px-3 ${workspace ? '' : 'opacity-50'}`}>
+                <Text className="text-base font-inter-semibold text-brand">
+                  {t('packaging.addLine')}
+                </Text>
+              </Pressable>
+            </View>
+            {packaging.length > 0 ? (
+              packaging.map((line) => (
+                <PackagingRow
+                  item={line}
+                  packaging={workspace?.packagingItems.find(
+                    (candidate) => candidate.id === line.packagingId,
+                  )}
+                  channels={workspace?.channels ?? []}
+                  currency={currency}
+                  locale={locale}
+                  key={line.id}
+                  onPress={() => openPackagingPicker(line)}
+                  onRemove={() =>
+                    setPackaging((current) => current.filter((entry) => entry.id !== line.id))
+                  }
+                />
+              ))
+            ) : (
+              <Text className="font-inter text-base text-muted">
+                {t('packaging.noLines')}
+              </Text>
+            )}
+            <Text className="font-inter text-sm leading-5 text-muted">
+              {t('packaging.wasteHelp')}
+            </Text>
+            {formErrors.items ? (
+              <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
+                {formErrors.items}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         {removedItem ? (
           <View className="min-h-12 flex-row items-center justify-between rounded-xl border border-line bg-surface px-3">
             <Text className="flex-1 font-inter text-sm text-ink">
@@ -1189,12 +1316,32 @@ export default function RecipeDetailScreen() {
       </ScrollView>
 
       <RecipeCostSummary
-        batchCost={costPreview.result?.batchCost}
-        costPerUnit={
+        batchFoodCost={costPreview.result?.batchFoodCost}
+        foodCostPerUnit={
           costPreview.result
             ? isSubRecipe
-              ? costPreview.result.costPerYieldUnit
-              : costPreview.result.costPerPortion
+              ? costPreview.result.foodCostPerYieldUnit
+              : costPreview.result.foodCostPerPortion
+            : undefined
+        }
+        packagingCostPerUnit={
+          !isSubRecipe && costPreview.result
+            ? costPreview.result.packagingCostByChannel[
+                previewChannel?.channel?.id ??
+                  workspace?.channels.find((channel) => channel.id === 'dine-in')?.id ??
+                  ''
+              ] ?? new Decimal(0)
+            : undefined
+        }
+        totalCostPerUnit={
+          !isSubRecipe && costPreview.result
+            ? costPreview.result.foodCostPerPortion.plus(
+                costPreview.result.packagingCostByChannel[
+                  previewChannel?.channel?.id ??
+                    workspace?.channels.find((channel) => channel.id === 'dine-in')?.id ??
+                    ''
+                ] ?? new Decimal(0),
+              )
             : undefined
         }
         profitPerPortion={profitPerPortion}
@@ -1231,19 +1378,31 @@ export default function RecipeDetailScreen() {
             setEditingItem(undefined);
           }}
           onAdd={addItemToDraft}
-          onCreatePackaging={handleCreatePackaging}
           ingredients={workspace.ingredients}
           conversionsByIngredient={workspace.conversionsByIngredient}
           recipes={workspace.recipes}
-          packagingItems={workspace.packagingItems}
           recipeEdges={selectedRecipeEdges}
           currentRecipeId={isNew ? undefined : id}
           initialItem={editingItem}
           draftItems={items}
-          currency={currency}
           locale={locale}
           unitSystem={workspace.settings.unitSystem}
           unitSizes={workspace.unitSizes}
+        />
+      ) : null}
+      {workspace && isPackagingPickerOpen ? (
+        <PackagingPicker
+          visible={isPackagingPickerOpen}
+          items={workspace.packagingItems}
+          channels={workspace.channels}
+          currency={currency}
+          locale={locale}
+          initialLine={editingPackaging}
+          onClose={() => {
+            setIsPackagingPickerOpen(false);
+            setEditingPackaging(undefined);
+          }}
+          onAdd={addPackagingToDraft}
         />
       ) : null}
       {impactReport ? (

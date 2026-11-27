@@ -9,11 +9,13 @@ import {
   packagingItems,
   recipeChannelPrices,
   recipeItems,
+  recipePackaging,
+  recipePackagingChannels,
   recipes,
   unitConversions,
 } from '@core/db/schema';
 
-import type { BackupV1 } from '../domain/backupFormat';
+import type { BackupV2 } from '../domain/backupFormat';
 import { omitLocalRecipeImages } from '../domain/backupRecipe';
 import { BACKUP_REMINDER_INTERVAL_MS } from '../domain/backupReminder';
 
@@ -21,7 +23,7 @@ export interface BackupMergeResult {
   addedCount: number;
 }
 
-export async function createBackup(database: AppDatabase): Promise<BackupV1> {
+export async function createBackup(database: AppDatabase): Promise<BackupV2> {
   return database.transaction(async (transaction) => {
     const ingredientRows = await transaction.select().from(ingredients);
     const conversionRows = await transaction.select().from(unitConversions);
@@ -29,6 +31,8 @@ export async function createBackup(database: AppDatabase): Promise<BackupV1> {
     const recipeRows = await transaction.select().from(recipes);
     const recipeItemRows = await transaction.select().from(recipeItems);
     const packagingRows = await transaction.select().from(packagingItems);
+    const recipePackagingRows = await transaction.select().from(recipePackaging);
+    const recipePackagingChannelRows = await transaction.select().from(recipePackagingChannels);
     const settingsRows = await transaction.select().from(globalSettings);
     const channelRows = await transaction.select().from(channels);
     const priceRows = await transaction.select().from(recipeChannelPrices);
@@ -39,7 +43,7 @@ export async function createBackup(database: AppDatabase): Promise<BackupV1> {
 
     return {
       format: 'platecost-backup',
-      schema_version: 1,
+      schema_version: 2,
       exported_at: new Date().toISOString(),
       tables: {
         ingredients: ingredientRows,
@@ -48,6 +52,8 @@ export async function createBackup(database: AppDatabase): Promise<BackupV1> {
         recipes: omitLocalRecipeImages(recipeRows),
         recipe_items: recipeItemRows,
         packaging_items: packagingRows,
+        recipe_packaging: recipePackagingRows,
+        recipe_packaging_channels: recipePackagingChannelRows,
         global_settings: {
           id: 1,
           locale: settings.locale,
@@ -72,7 +78,7 @@ export async function createBackup(database: AppDatabase): Promise<BackupV1> {
 
 export async function mergeBackup(
   database: AppDatabase,
-  backup: BackupV1,
+  backup: BackupV2,
 ): Promise<BackupMergeResult> {
   return database.transaction(async (transaction) => {
     const insertedIngredients = backup.tables.ingredients.length
@@ -124,6 +130,16 @@ export async function mergeBackup(
       .returning({ id: globalSettings.id });
     const newIngredientIds = new Set(insertedIngredients.map((row) => row.id));
     const newRecipeIds = new Set(insertedRecipes.map((row) => row.id));
+    const recipePackagingToAdd = backup.tables.recipe_packaging.filter((row) =>
+      newRecipeIds.has(row.recipeId),
+    );
+    const insertedRecipePackaging = recipePackagingToAdd.length
+      ? await transaction
+          .insert(recipePackaging)
+          .values(recipePackagingToAdd)
+          .onConflictDoNothing()
+          .returning({ id: recipePackaging.id })
+      : [];
     const conversionsToAdd = backup.tables.unit_conversions.filter((row) =>
       newIngredientIds.has(row.ingredientId),
     );
@@ -132,6 +148,10 @@ export async function mergeBackup(
     );
     const recipePricesToAdd = backup.tables.recipe_channel_prices.filter((row) =>
       newRecipeIds.has(row.recipeId),
+    );
+    const newRecipePackagingIds = new Set(insertedRecipePackaging.map((row) => row.id));
+    const recipePackagingChannelsToAdd = backup.tables.recipe_packaging_channels.filter((row) =>
+      newRecipePackagingIds.has(row.recipePackagingId),
     );
     const insertedConversions = conversionsToAdd.length
       ? await transaction
@@ -161,6 +181,13 @@ export async function mergeBackup(
           .onConflictDoNothing()
           .returning({ id: recipeChannelPrices.id })
       : [];
+    const insertedRecipePackagingChannels = recipePackagingChannelsToAdd.length
+      ? await transaction
+          .insert(recipePackagingChannels)
+          .values(recipePackagingChannelsToAdd)
+          .onConflictDoNothing()
+          .returning({ recipePackagingId: recipePackagingChannels.recipePackagingId })
+      : [];
 
     if (insertedRecipes.length > 0) {
       const [updatedSettings] = await transaction
@@ -183,7 +210,9 @@ export async function mergeBackup(
         insertedConversions.length +
         insertedHistory.length +
         insertedRecipeItems.length +
-        insertedPrices.length,
+        insertedPrices.length +
+        insertedRecipePackaging.length +
+        insertedRecipePackagingChannels.length,
     };
   });
 }

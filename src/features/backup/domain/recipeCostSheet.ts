@@ -2,6 +2,10 @@ export interface RecipeCostSheetLabels {
   generated: string;
   portions: string;
   batchCost: string;
+  foodCost: string;
+  packagingCost: string;
+  packagingBreakdown: string;
+  appliesTo: string;
   costPerPlate: string;
   costBreakdown: string;
   item: string;
@@ -9,6 +13,7 @@ export interface RecipeCostSheetLabels {
   cost: string;
   salesChannels: string;
   channel: string;
+  channelCost: string;
   price: string;
   fees: string;
   profit: string;
@@ -21,11 +26,20 @@ export interface RecipeCostSheetData {
   generatedAt: string;
   portions: string;
   batchCost: string;
+  foodCostPerPlate: string;
+  packagingCostPerPlate: string;
   costPerPlate: string;
   breakdown: { name: string; quantity: string; unit: string; cost: string }[];
+  packagingBreakdown: {
+    name: string;
+    quantity: string;
+    channel: string;
+    cost: string;
+  }[];
   channels: {
     name: string;
     price: string;
+    cost: string;
     fees: string;
     profit: string;
     margin: string;
@@ -60,9 +74,21 @@ export function buildRecipeCostSheetHtml(data: RecipeCostSheetData) {
         <tr>
           <td>${escapeHtml(row.name)}</td>
           <td>${escapeHtml(row.price)}</td>
+          <td>${escapeHtml(row.cost)}</td>
           <td>${escapeHtml(row.fees)}</td>
           <td>${escapeHtml(row.profit)}</td>
           <td>${escapeHtml(row.margin)}</td>
+        </tr>`,
+    )
+    .join('');
+  const packagingRows = data.packagingBreakdown
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.quantity)}</td>
+          <td>${escapeHtml(row.channel)}</td>
+          <td>${escapeHtml(row.cost)}</td>
         </tr>`,
     )
     .join('');
@@ -92,6 +118,8 @@ export function buildRecipeCostSheetHtml(data: RecipeCostSheetData) {
     <section class="summary">
       <p><strong>${escapeHtml(data.labels.portions)}:</strong> ${escapeHtml(data.portions)}</p>
       <p><strong>${escapeHtml(data.labels.batchCost)}:</strong> ${escapeHtml(data.batchCost)}</p>
+      <p><strong>${escapeHtml(data.labels.foodCost)}:</strong> ${escapeHtml(data.foodCostPerPlate)}</p>
+      <p><strong>${escapeHtml(data.labels.packagingCost)}:</strong> ${escapeHtml(data.packagingCostPerPlate)}</p>
       <p><strong>${escapeHtml(data.labels.costPerPlate)}:</strong> ${escapeHtml(data.costPerPlate)}</p>
     </section>
     <h2>${escapeHtml(data.labels.costBreakdown)}</h2>
@@ -104,12 +132,27 @@ export function buildRecipeCostSheetHtml(data: RecipeCostSheetData) {
       <tbody>${breakdownRows}</tbody>
     </table>
     ${
+      packagingRows
+        ? `<h2>${escapeHtml(data.labels.packagingBreakdown)}</h2>
+    <table>
+      <thead><tr>
+        <th>${escapeHtml(data.labels.item)}</th>
+        <th>${escapeHtml(data.labels.quantity)}</th>
+        <th>${escapeHtml(data.labels.appliesTo)}</th>
+        <th>${escapeHtml(data.labels.cost)}</th>
+      </tr></thead>
+      <tbody>${packagingRows}</tbody>
+    </table>`
+        : ''
+    }
+    ${
       channelRows
         ? `<h2>${escapeHtml(data.labels.salesChannels)}</h2>
     <table>
       <thead><tr>
         <th>${escapeHtml(data.labels.channel)}</th>
         <th>${escapeHtml(data.labels.price)}</th>
+        <th>${escapeHtml(data.labels.channelCost)}</th>
         <th>${escapeHtml(data.labels.fees)}</th>
         <th>${escapeHtml(data.labels.profit)}</th>
         <th>${escapeHtml(data.labels.margin)}</th>

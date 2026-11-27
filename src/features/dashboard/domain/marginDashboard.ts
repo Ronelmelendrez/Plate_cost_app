@@ -52,12 +52,15 @@ export function buildMarginDashboardRows(
       throw new Error(`Dish "${recipe.name}" could not be loaded for margin calculation.`);
     }
 
-    const cost = calculateRecipeCost(
+    const recipeCost = calculateRecipeCost(
       recipeInput,
       workspace.wastePct,
       fractionDigits,
       workspace.unitSizes,
-    ).costPerPortion;
+    );
+    const cost = recipeCost.foodCostPerPortion.plus(
+      recipeCost.packagingCostByChannel[channelId] ?? new Decimal(0),
+    );
     if (priceMinor === undefined) {
       return [{ recipeId: recipe.id, name: recipe.name, cost }];
     }

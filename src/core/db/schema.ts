@@ -87,10 +87,33 @@ export const packagingItems = sqliteTable(
   {
     id: text('id').primaryKey().notNull().default(uuidDefault),
     name: text('name').notNull(),
-    costMinor: integer('cost_minor').notNull(),
+    packPriceMinor: integer('pack_price_minor').notNull(),
+    piecesPerPack: integer('pieces_per_pack').notNull(),
+    note: text('note'),
+    isFavourite: integer('is_favourite', { mode: 'boolean' }).notNull().default(false),
+    lastUsedAt: text('last_used_at'),
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [index('packaging_items_name_idx').on(table.name)],
+);
+
+export const recipePackaging = sqliteTable(
+  'recipe_packaging',
+  {
+    id: text('id').primaryKey().notNull().default(uuidDefault),
+    recipeId: text('recipe_id')
+      .notNull()
+      .references(() => recipes.id, { onDelete: 'cascade' }),
+    packagingId: text('packaging_id')
+      .notNull()
+      .references(() => packagingItems.id, { onDelete: 'cascade' }),
+    qtyPerPortion: text('qty_per_portion').notNull(),
+    appliesTo: text('applies_to', { enum: ['all', 'selected'] }).notNull().default('all'),
+  },
+  (table) => [
+    index('recipe_packaging_recipe_idx').on(table.recipeId),
+    index('recipe_packaging_packaging_idx').on(table.packagingId),
+  ],
 );
 
 export const recipeItems = sqliteTable(
@@ -100,7 +123,7 @@ export const recipeItems = sqliteTable(
     recipeId: text('recipe_id')
       .notNull()
       .references(() => recipes.id, { onDelete: 'cascade' }),
-    kind: text('kind', { enum: ['ingredient', 'recipe', 'packaging'] }).notNull(),
+    kind: text('kind', { enum: ['ingredient', 'recipe'] }).notNull(),
     referenceId: text('reference_id').notNull(),
     quantity: text('quantity').notNull(),
     unit: text('unit', { enum: [...RECIPE_UNITS] }).notNull(),
@@ -148,6 +171,25 @@ export const channels = sqliteTable(
   (table) => [index('channels_name_idx').on(table.name)],
 );
 
+export const recipePackagingChannels = sqliteTable(
+  'recipe_packaging_channels',
+  {
+    recipePackagingId: text('recipe_packaging_id')
+      .notNull()
+      .references(() => recipePackaging.id, { onDelete: 'cascade' }),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    uniqueIndex('recipe_packaging_channel_unique_idx').on(
+      table.recipePackagingId,
+      table.channelId,
+    ),
+    index('recipe_packaging_channel_channel_idx').on(table.channelId),
+  ],
+);
+
 export const recipeChannelPrices = sqliteTable(
   'recipe_channel_prices',
   {
@@ -174,6 +216,7 @@ export const ingredientRelations = relations(ingredients, ({ many }) => ({
 
 export const recipeRelations = relations(recipes, ({ many }) => ({
   items: many(recipeItems),
+  packaging: many(recipePackaging),
   channelPrices: many(recipeChannelPrices),
 }));
 
@@ -200,7 +243,34 @@ export const unitConversionRelations = relations(unitConversions, ({ one }) => (
 
 export const channelRelations = relations(channels, ({ many }) => ({
   recipePrices: many(recipeChannelPrices),
+  recipePackaging: many(recipePackagingChannels),
 }));
+
+export const recipePackagingRelations = relations(recipePackaging, ({ many, one }) => ({
+  channels: many(recipePackagingChannels),
+  packaging: one(packagingItems, {
+    fields: [recipePackaging.packagingId],
+    references: [packagingItems.id],
+  }),
+  recipe: one(recipes, {
+    fields: [recipePackaging.recipeId],
+    references: [recipes.id],
+  }),
+}));
+
+export const recipePackagingChannelRelations = relations(
+  recipePackagingChannels,
+  ({ one }) => ({
+    channel: one(channels, {
+      fields: [recipePackagingChannels.channelId],
+      references: [channels.id],
+    }),
+    recipePackaging: one(recipePackaging, {
+      fields: [recipePackagingChannels.recipePackagingId],
+      references: [recipePackaging.id],
+    }),
+  }),
+);
 
 export const recipeChannelPriceRelations = relations(recipeChannelPrices, ({ one }) => ({
   recipe: one(recipes, {
@@ -225,6 +295,10 @@ export const schema = {
   recipeItems,
   recipeItemRelations,
   packagingItems,
+  recipePackaging,
+  recipePackagingRelations,
+  recipePackagingChannels,
+  recipePackagingChannelRelations,
   globalSettings,
   channels,
   channelRelations,

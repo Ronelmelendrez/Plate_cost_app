@@ -1,7 +1,9 @@
+import { Decimal } from 'decimal.js';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import {
   calculateRecipeCost,
+  InvalidPackagingOnSubRecipeError,
   InvalidSubRecipeError,
   MissingRecipeReferenceError,
   RecipeCycleError,
@@ -17,19 +19,21 @@ import {
   channels,
   recipeChannelPrices,
   recipeItems,
+  recipePackaging,
+  recipePackagingChannels,
   recipes,
   unitConversions,
 } from '@core/db/schema';
 import type { RecipeUnit, RecipeUnitSizes, RecipeYieldUnit } from '@core/costing/units';
 import { getAppSettings, listSalesChannels } from '@features/settings';
+import type { RecipePackagingDraft } from '@features/packaging';
 
 export type Recipe = typeof recipes.$inferSelect;
-export type PackagingItem = typeof packagingItems.$inferSelect;
 export type RecipeChannelPrice = typeof recipeChannelPrices.$inferSelect;
 
 export interface RecipeItemDraft {
   id: string;
-  kind: 'ingredient' | 'recipe' | 'packaging';
+  kind: 'ingredient' | 'recipe';
   referenceId: string;
   quantity: string;
   unit: RecipeUnit;
@@ -50,6 +54,7 @@ export interface RecipeInput {
   overheadValue: string;
   imageUri?: string | null;
   items: RecipeItemDraft[];
+  packaging: RecipePackagingDraft[];
   channelPrices?: { channelId: string; priceMinor: number }[];
 }
 
@@ -62,13 +67,26 @@ export interface RecipeSummary {
 
 async function loadCostingContext(database: AppDatabase) {
   const initializedSettings = await getAppSettings(database);
-  const [recipeRows, itemRows, ingredientRows, conversionRows, packagingRows, settingsRows, channelRows, channelPriceRows] =
+  const [
+    recipeRows,
+    itemRows,
+    ingredientRows,
+    conversionRows,
+    packagingRows,
+    recipePackagingRows,
+    recipePackagingChannelRows,
+    settingsRows,
+    channelRows,
+    channelPriceRows,
+  ] =
     await Promise.all([
       database.select().from(recipes).orderBy(asc(recipes.name)),
       database.select().from(recipeItems),
       database.select().from(ingredients).orderBy(asc(ingredients.name)),
       database.select().from(unitConversions),
       database.select().from(packagingItems).orderBy(asc(packagingItems.name)),
+      database.select().from(recipePackaging),
+      database.select().from(recipePackagingChannels),
       database.select().from(globalSettings).where(eq(globalSettings.id, 1)).limit(1),
       listSalesChannels(database),
       database.select().from(recipeChannelPrices),
@@ -94,6 +112,23 @@ async function loadCostingContext(database: AppDatabase) {
     itemsByRecipe.set(item.recipeId, current);
   }
   const packagingById = new Map(packagingRows.map((item) => [item.id, item]));
+  const packagingByRecipe = new Map<
+    string,
+    {
+      line: (typeof recipePackagingRows)[number];
+      channelIds: string[];
+    }[]
+  >();
+  for (const line of recipePackagingRows) {
+    const current = packagingByRecipe.get(line.recipeId) ?? [];
+    current.push({
+      line,
+      channelIds: recipePackagingChannelRows
+        .filter((channel) => channel.recipePackagingId === line.id)
+        .map((channel) => channel.channelId),
+    });
+    packagingByRecipe.set(line.recipeId, current);
+  }
   const builtRecipes = new Map<string, RecipeCostInput>();
   const buildingRecipes = new Set<string>();
 
@@ -152,19 +187,27 @@ async function loadCostingContext(database: AppDatabase) {
           unit: item.unit,
           detail: childRecipe,
         });
-      } else {
-        const packaging = packagingById.get(item.referenceId);
-        lines.push({
-          id: item.id,
-          kind: 'packaging',
-          name: packaging?.name ?? '',
-          quantity: item.quantity,
-          unit: item.unit,
-          packaging,
-        });
       }
     }
 
+    const packagingLines = recipe.isSubRecipe
+      ? []
+      : (packagingByRecipe.get(recipeId) ?? []).map(({ line, channelIds }) => {
+          const packaging = packagingById.get(line.packagingId);
+          if (!packaging) {
+            throw new MissingRecipeReferenceError();
+          }
+          return {
+            id: line.id,
+            packagingId: line.packagingId,
+            name: packaging.name,
+            quantityPerPortion: line.qtyPerPortion,
+            packPriceMinor: packaging.packPriceMinor,
+            piecesPerPack: packaging.piecesPerPack,
+            appliesTo: line.appliesTo,
+            channelIds,
+          };
+        });
     const input: RecipeCostInput = {
       id: recipe.id,
       isSubRecipe: recipe.isSubRecipe,
@@ -175,7 +218,9 @@ async function loadCostingContext(database: AppDatabase) {
       laborRateMinor: recipe.laborRateMinor,
       overheadMode: recipe.overheadMode,
       overheadValue: recipe.overheadValue,
+      channelIds: channelRows.map((channel) => channel.id),
       items: lines,
+      packaging: packagingLines,
     };
     buildingRecipes.delete(recipeId);
     builtRecipes.set(recipeId, input);
@@ -225,8 +270,14 @@ export async function listRecipeSummaries(database: AppDatabase, fractionDigits:
     );
     return {
       recipe,
-      costPerUnit: (recipe.isSubRecipe ? result.costPerYieldUnit : result.costPerPortion).toString(),
-      batchCost: result.batchCost.toString(),
+      costPerUnit: (
+        recipe.isSubRecipe
+          ? result.foodCostPerYieldUnit
+          : result.foodCostPerPortion.plus(
+              result.packagingCostByChannel['dine-in'] ?? new Decimal(0),
+            )
+      ).toString(),
+      batchCost: result.batchFoodCost.toString(),
       itemCount: context.itemsByRecipe.get(recipe.id)?.length ?? 0,
     } satisfies RecipeSummary;
   });
@@ -258,6 +309,15 @@ export async function getRecipeEditorData(database: AppDatabase, id: string, fra
     settings: context.settings,
     channels: context.channels,
     channelPrices: context.channelPrices.filter((price) => price.recipeId === id),
+    packaging: costInput.packaging.map(
+      ({ id: lineId, packagingId, quantityPerPortion, appliesTo, channelIds }) => ({
+        id: lineId,
+        packagingId,
+        quantityPerPortion,
+        appliesTo,
+        channelIds,
+      }),
+    ),
     unitSizes: context.unitSizes,
   };
 }
@@ -359,11 +419,11 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
       throw new Error('Recipe could not be saved.');
     }
     const storedRecipeId = recipeId;
+    if (input.isSubRecipe && input.packaging.length > 0) {
+      throw new InvalidPackagingOnSubRecipeError();
+    }
     for (const item of input.items) {
       if (item.kind === 'ingredient' && !availableIngredients.has(item.referenceId)) {
-        throw new MissingRecipeReferenceError();
-      }
-      if (item.kind === 'packaging' && !availablePackaging.has(item.referenceId)) {
         throw new MissingRecipeReferenceError();
       }
       if (item.kind === 'recipe') {
@@ -379,6 +439,21 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
         }
       }
     }
+    for (const line of input.packaging) {
+      if (!availablePackaging.has(line.packagingId)) {
+        throw new MissingRecipeReferenceError();
+      }
+      if (!new Decimal(line.quantityPerPortion).isFinite() || new Decimal(line.quantityPerPortion).lte(0)) {
+        throw new Error('Packaging quantity per portion must be greater than zero.');
+      }
+      if (
+        line.appliesTo === 'selected' &&
+        (line.channelIds.length === 0 ||
+          line.channelIds.some((channelId) => !availableChannels.has(channelId)))
+      ) {
+        throw new Error('Selected packaging channels must include at least one valid channel.');
+      }
+    }
     await transaction.delete(recipeItems).where(eq(recipeItems.recipeId, storedRecipeId));
     if (input.items.length > 0) {
       await transaction.insert(recipeItems).values(
@@ -390,6 +465,43 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
           unit: item.unit,
         })),
       );
+    }
+    if (!input.isSubRecipe) {
+      const currentPackagingLines = await transaction
+        .select({ id: recipePackaging.id })
+        .from(recipePackaging)
+        .where(eq(recipePackaging.recipeId, storedRecipeId));
+      const lineIds = currentPackagingLines.map((line) => line.id);
+      if (lineIds.length > 0) {
+        await transaction
+          .delete(recipePackagingChannels)
+          .where(inArray(recipePackagingChannels.recipePackagingId, lineIds));
+      }
+      await transaction
+        .delete(recipePackaging)
+        .where(eq(recipePackaging.recipeId, storedRecipeId));
+      if (input.packaging.length > 0) {
+        await transaction.insert(recipePackaging).values(
+          input.packaging.map((line) => ({
+            id: line.id,
+            recipeId: storedRecipeId,
+            packagingId: line.packagingId,
+            qtyPerPortion: line.quantityPerPortion,
+            appliesTo: line.appliesTo,
+          })),
+        );
+        const selectedChannels = input.packaging.flatMap((line) =>
+          line.appliesTo === 'selected'
+            ? line.channelIds.map((channelId) => ({
+                recipePackagingId: line.id,
+                channelId,
+              }))
+            : [],
+        );
+        if (selectedChannels.length > 0) {
+          await transaction.insert(recipePackagingChannels).values(selectedChannels);
+        }
+      }
     }
     const channelPrices =
       input.channelPrices ??
@@ -431,6 +543,13 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
         .update(ingredients)
         .set({ lastUsedAt: now })
         .where(inArray(ingredients.id, usedIngredients));
+    }
+    const usedPackaging = input.packaging.map((line) => line.packagingId);
+    if (usedPackaging.length > 0) {
+      await transaction
+        .update(packagingItems)
+        .set({ lastUsedAt: now })
+        .where(inArray(packagingItems.id, usedPackaging));
     }
 
     return storedRecipeId;
@@ -499,18 +618,6 @@ export async function saveRecipeChannelPrice(
         .where(eq(recipes.id, recipeId));
     }
   });
-}
-
-export async function savePackagingItem(
-  database: AppDatabase,
-  name: string,
-  costMinor: number,
-) {
-  const [created] = await database
-    .insert(packagingItems)
-    .values({ name, costMinor, updatedAt: new Date().toISOString() })
-    .returning({ id: packagingItems.id });
-  return created;
 }
 
 export async function getRecipeItems(database: AppDatabase, id: string) {

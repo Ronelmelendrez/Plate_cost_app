@@ -6,8 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { formatCurrency } from '@core/costing/money';
 
 interface RecipeCostSummaryProps {
-  batchCost?: Decimal;
-  costPerUnit?: Decimal;
+  batchFoodCost?: Decimal;
+  foodCostPerUnit?: Decimal;
+  packagingCostPerUnit?: Decimal;
+  totalCostPerUnit?: Decimal;
   profitPerPortion?: Decimal;
   profitChannelName?: string;
   recipeId?: string;
@@ -21,8 +23,10 @@ interface RecipeCostSummaryProps {
 }
 
 export function RecipeCostSummary({
-  batchCost,
-  costPerUnit,
+  batchFoodCost,
+  foodCostPerUnit,
+  packagingCostPerUnit,
+  totalCostPerUnit,
   profitPerPortion,
   profitChannelName,
   recipeId,
@@ -42,22 +46,44 @@ export function RecipeCostSummary({
         <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
           {error}
         </Text>
-      ) : batchCost && costPerUnit ? (
-        <View className="flex-row items-start justify-between gap-3">
-          <View className="flex-1 gap-1">
-            <Text className="font-inter text-sm text-muted">{t('recipes.costPerBatch')}</Text>
-            <Text className="text-base font-inter-semibold text-ink">
-              {formatCurrency(batchCost, currency, locale)}
-            </Text>
-          </View>
-          <View className="flex-1 items-end gap-1">
+      ) : batchFoodCost && foodCostPerUnit ? (
+        <View className="gap-1">
+          <View className="flex-row items-center justify-between">
             <Text className="font-inter text-sm text-muted">
-              {isSubRecipe ? t('recipes.costPerYieldUnit') : t('recipes.costPerPortion')}
+              {t(isSubRecipe ? 'recipes.costPerBatch' : 'packaging.foodCost')}
             </Text>
-            <Text className="text-base font-inter-semibold text-ink">
-              {formatCurrency(costPerUnit, currency, locale)}
+            <Text className="font-inter-semibold text-ink">
+              {formatCurrency(batchFoodCost, currency, locale)}
             </Text>
           </View>
+          <View className="flex-row items-center justify-between">
+            <Text className="font-inter text-sm text-muted">
+              {t(isSubRecipe ? 'recipes.costPerYieldUnit' : 'packaging.foodCostPerPortion')}
+            </Text>
+            <Text className="font-inter-semibold text-ink">
+              {formatCurrency(foodCostPerUnit, currency, locale)}
+            </Text>
+          </View>
+          {!isSubRecipe && packagingCostPerUnit && totalCostPerUnit ? (
+            <>
+              <View className="flex-row items-center justify-between">
+                <Text className="font-inter text-sm text-muted">
+                  {t('packaging.packagingCostPerPortion')}
+                </Text>
+                <Text className="font-inter-semibold text-ink">
+                  {formatCurrency(packagingCostPerUnit, currency, locale)}
+                </Text>
+              </View>
+              <View className="flex-row items-center justify-between border-t border-line pt-1">
+                <Text className="font-inter-semibold text-ink">
+                  {t('recipes.costPerPortion')}
+                </Text>
+                <Text className="font-inter-semibold text-ink">
+                  {formatCurrency(totalCostPerUnit, currency, locale)}
+                </Text>
+              </View>
+            </>
+          ) : null}
         </View>
       ) : (
         <Text className="font-inter text-base text-muted">

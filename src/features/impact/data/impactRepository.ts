@@ -8,7 +8,8 @@ import { getRecipeWorkspace } from '@features/recipes/data/recipeRepository';
 
 export type PriceImpactSource =
   | { type: 'ingredient'; id: string }
-  | { type: 'recipe'; id: string };
+  | { type: 'recipe'; id: string }
+  | { type: 'packaging'; id: string };
 
 export type PriceImpactStatus = 'good' | 'close' | 'low' | 'unpriced';
 
@@ -33,18 +34,22 @@ export interface PriceChangeImpactReport {
 }
 
 function recipeUsesSource(input: RecipeCostInput, source: PriceImpactSource): boolean {
-  return input.items.some((item) => {
-    if (source.type === 'ingredient' && item.kind === 'ingredient') {
-      return item.ingredient?.id === source.id;
-    }
-    if (item.kind !== 'recipe' || !item.detail) {
-      return false;
-    }
-    return (
-      (source.type === 'recipe' && item.detail.id === source.id) ||
-      recipeUsesSource(item.detail, source)
-    );
-  });
+  return (
+    (source.type === 'packaging' &&
+      input.packaging.some((line) => line.packagingId === source.id)) ||
+    input.items.some((item) => {
+      if (source.type === 'ingredient' && item.kind === 'ingredient') {
+        return item.ingredient?.id === source.id;
+      }
+      if (item.kind !== 'recipe' || !item.detail) {
+        return false;
+      }
+      return (
+        (source.type === 'recipe' && item.detail.id === source.id) ||
+        recipeUsesSource(item.detail, source)
+      );
+    })
+  );
 }
 
 function getStatus(marginPct: Decimal, targetMarginPct: Decimal): PriceImpactStatus {
@@ -62,7 +67,9 @@ export async function getPriceChangeImpact(
   const sourceRecord =
     source.type === 'ingredient'
       ? workspace.ingredients.find((ingredient) => ingredient.id === source.id)
-      : workspace.recipes.find((recipe) => recipe.id === source.id);
+      : source.type === 'recipe'
+        ? workspace.recipes.find((recipe) => recipe.id === source.id)
+        : workspace.packagingItems.find((item) => item.id === source.id);
   if (!sourceRecord) {
     throw new Error('The changed ingredient or sub-recipe could not be found.');
   }
@@ -83,12 +90,12 @@ export async function getPriceChangeImpact(
         return [];
       }
 
-      const costPerPortion = calculateRecipeCost(
+      const recipeCost = calculateRecipeCost(
         recipeInput,
         workspace.wastePct,
         fractionDigits,
         workspace.unitSizes,
-      ).costPerPortion;
+      );
       const savedPrices = workspace.channelPrices.filter(
         (price) => price.recipeId === recipe.id,
       );
@@ -103,6 +110,9 @@ export async function getPriceChangeImpact(
         if (!channel) {
           return [];
         }
+        const costPerPortion = recipeCost.foodCostPerPortion.plus(
+          recipeCost.packagingCostByChannel[price.channelId] ?? new Decimal(0),
+        );
         const pricing = calculateChannelPricing({
           costPerPortion,
           priceMinor: price.priceMinor,
@@ -113,7 +123,7 @@ export async function getPriceChangeImpact(
           taxPct: workspace.settings.taxPct,
           feesOnTaxIncludedPrice: workspace.settings.feesOnTaxIncludedPrice,
         });
-        return [{ channelName: channel.name, marginPct: pricing.marginPct }];
+        return [{ channelName: channel.name, marginPct: pricing.marginPct, costPerPortion }];
       });
       const worstChannel = channelMargins.reduce<
         (typeof channelMargins)[number] | undefined
@@ -125,12 +135,19 @@ export async function getPriceChangeImpact(
       const belowTarget = channelMargins.some((channel) =>
         channel.marginPct.lt(targetMarginPct),
       );
+      const defaultChannelId =
+        workspace.channels.find((channel) => channel.id === 'dine-in')?.id ??
+        workspace.channels[0]?.id;
+      const defaultCost = recipeCost.foodCostPerPortion.plus(
+        (defaultChannelId && recipeCost.packagingCostByChannel[defaultChannelId]) ??
+          new Decimal(0),
+      );
 
       return [
         {
           recipeId: recipe.id,
           name: recipe.name,
-          costPerPortion,
+          costPerPortion: worstChannel?.costPerPortion ?? defaultCost,
           belowTarget,
           status: worstChannel
             ? getStatus(worstChannel.marginPct, targetMarginPct)

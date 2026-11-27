@@ -38,7 +38,6 @@ import {
   getStarterIngredients,
   getStarterTemplates,
   type StarterIngredientTemplate,
-  type StarterPackagingTemplate,
 } from '../data/starterTemplates';
 import { getMarginStatus, type MarginStatus } from '@features/dashboard/domain/marginDashboard';
 import { Button, TextField } from '@shared/ui';
@@ -104,8 +103,6 @@ export default function OnboardingScreen() {
   const [ingredientPrices, setIngredientPrices] = useState<Record<string, string>>({});
   const [ingredientAmounts, setIngredientAmounts] = useState<Record<string, string>>({});
   const [sellingPrice, setSellingPrice] = useState('');
-  const [selectedPackagingId, setSelectedPackagingId] = useState<string>();
-  const [packagingPrice, setPackagingPrice] = useState('');
   const [savedRecipeId, setSavedRecipeId] = useState<string>();
   const [preview, setPreview] = useState<MarginPreview>();
 
@@ -189,7 +186,7 @@ export default function OnboardingScreen() {
     }
     const currencyCode = value.toUpperCase().slice(0, 3);
     const hasEnteredPrices =
-      Object.values(ingredientPrices).some(Boolean) || Boolean(sellingPrice || packagingPrice);
+      Object.values(ingredientPrices).some(Boolean) || Boolean(sellingPrice);
     updateSettings({
       currencyCode,
       ...(/^[A-Z]{3}$/.test(currencyCode)
@@ -199,7 +196,6 @@ export default function OnboardingScreen() {
     if (currencyCode !== settings.currencyCode && hasEnteredPrices) {
       setIngredientPrices({});
       setSellingPrice('');
-      setPackagingPrice('');
       setFormError(t('onboarding.currencyChangeReset'));
     }
   };
@@ -211,15 +207,13 @@ export default function OnboardingScreen() {
     const hasStartedRecipe =
       selectedIngredientIds.length > 0 ||
       Object.values(ingredientPrices).some(Boolean) ||
-      Boolean(sellingPrice || packagingPrice);
+      Boolean(sellingPrice);
     updateSettings({ unitSystem });
     if (hasStartedRecipe) {
       setSelectedIngredientIds([]);
       setIngredientPrices({});
       setIngredientAmounts({});
       setSellingPrice('');
-      setSelectedPackagingId(undefined);
-      setPackagingPrice('');
       setFormError(t('onboarding.unitChangeReset'));
     }
   };
@@ -340,20 +334,6 @@ export default function OnboardingScreen() {
       return;
     }
 
-    const selectedPackaging: StarterPackagingTemplate | undefined =
-      starterTemplates.packaging.find((item) => item.id === selectedPackagingId);
-    const packagingCostMinor = selectedPackaging
-      ? priceInMinorUnits(packagingPrice)
-      : undefined;
-    if (selectedPackaging && (packagingCostMinor === null || packagingCostMinor === undefined || packagingCostMinor <= 0)) {
-      setFormError(t('onboarding.validPackagingPrice'));
-      return;
-    }
-    const validPackagingCostMinor =
-      typeof packagingCostMinor === 'number' && packagingCostMinor > 0
-        ? packagingCostMinor
-        : undefined;
-
     setIsSaving(true);
     setFormError('');
     let recipeWasSaved = Boolean(savedRecipeId);
@@ -368,14 +348,6 @@ export default function OnboardingScreen() {
             recipeQuantity: row.recipeQuantity,
           })),
           sellingPriceMinor,
-          ...(selectedPackaging && validPackagingCostMinor !== undefined
-            ? {
-                packaging: {
-                  template: selectedPackaging,
-                  costMinor: validPackagingCostMinor,
-                },
-              }
-            : {}),
         });
         setSavedRecipeId(recipeId);
         recipeWasSaved = true;
@@ -391,7 +363,9 @@ export default function OnboardingScreen() {
       if (!channel || !channelPrice) {
         throw new Error('The starter dish sales channel could not be loaded.');
       }
-      const cost = recipeData.cost.costPerPortion;
+      const cost = recipeData.cost.foodCostPerPortion.plus(
+        recipeData.cost.packagingCostByChannel[channel.id] ?? new Decimal(0),
+      );
       const pricing = calculateChannelPricing({
         costPerPortion: cost,
         priceMinor: channelPrice.priceMinor,
@@ -752,64 +726,6 @@ export default function OnboardingScreen() {
                 prefix={currencyParts.prefix}
                 suffix={currencyParts.suffix}
               />
-            </View>
-            <View className="gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
-              <Text className="font-inter-semibold text-[15px] text-ink">
-                {t('onboarding.packaging')}
-              </Text>
-              <View className="flex-row flex-wrap gap-2">
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: !selectedPackagingId }}
-                  className={`min-h-11 justify-center rounded-full border px-4 ${
-                    !selectedPackagingId ? 'border-brand bg-brand' : 'border-line bg-background'
-                  }`}
-                  onPress={() => {
-                    setSelectedPackagingId(undefined);
-                    setPackagingPrice('');
-                  }}>
-                  <Text className={`font-inter-semibold text-[13px] ${!selectedPackagingId ? 'text-white' : 'text-ink'}`}>
-                    {t('onboarding.noPackaging')}
-                  </Text>
-                </Pressable>
-                {starterTemplates.packaging.map((item) => {
-                  const selected = selectedPackagingId === item.id;
-                  return (
-                    <Pressable
-                      key={item.id}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: selected }}
-                      className={`min-h-11 justify-center rounded-full border px-4 ${
-                        selected ? 'border-brand bg-brand' : 'border-line bg-background'
-                      }`}
-                      onPress={() => {
-                        setSelectedPackagingId(item.id);
-                        setFormError('');
-                      }}>
-                      <Text className={`font-inter-semibold text-[13px] ${selected ? 'text-white' : 'text-ink'}`}>
-                        {item.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {selectedPackagingId ? (
-                <TextField
-                  label={t('onboarding.packagingPrice', {
-                    quantity: 1,
-                    unit: t('onboarding.piece'),
-                  })}
-                  value={packagingPrice}
-                  onChangeText={setPackagingPrice}
-                  onBlur={() =>
-                    setPackagingPrice(formatDecimalInput(packagingPrice, locale))
-                  }
-                  keyboardType="decimal-pad"
-                  prefix={currencyParts.prefix}
-                  suffix={currencyParts.suffix}
-                  helperText={t('onboarding.packagingHelp')}
-                />
-              ) : null}
             </View>
           </View>
         ) : null}

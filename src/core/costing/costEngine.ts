@@ -28,21 +28,25 @@ export interface RecipeIngredientInput {
   conversions: IngredientConversionInput[];
 }
 
-export interface RecipePackagingInput {
-  id: string;
-  name: string;
-  costMinor: number;
-}
-
 export interface RecipeCostLine {
   id: string;
-  kind: 'ingredient' | 'recipe' | 'packaging';
+  kind: 'ingredient' | 'recipe';
   name: string;
   quantity: string;
   unit: RecipeUnit;
   detail?: RecipeCostInput;
   ingredient?: RecipeIngredientInput;
-  packaging?: RecipePackagingInput;
+}
+
+export interface RecipePackagingCostLine {
+  id: string;
+  packagingId: string;
+  name: string;
+  quantityPerPortion: string;
+  packPriceMinor: number;
+  piecesPerPack: number;
+  appliesTo: 'all' | 'selected';
+  channelIds: string[];
 }
 
 export interface RecipeCostInput {
@@ -55,7 +59,9 @@ export interface RecipeCostInput {
   laborRateMinor: number;
   overheadMode: 'none' | 'flat' | 'percent';
   overheadValue: string;
+  channelIds: string[];
   items: RecipeCostLine[];
+  packaging: RecipePackagingCostLine[];
 }
 
 export interface CostBreakdownLine {
@@ -67,12 +73,21 @@ export interface CostBreakdownLine {
   costPerPortion: Decimal;
 }
 
-export interface RecipeCostResult {
-  batchCost: Decimal;
+export interface PackagingCostBreakdownLine {
+  id: string;
+  name: string;
+  quantityPerPortion: string;
   costPerPortion: Decimal;
-  costPerYieldUnit: Decimal;
+}
+
+export interface RecipeCostResult {
+  batchFoodCost: Decimal;
+  foodCostPerPortion: Decimal;
+  foodCostPerYieldUnit: Decimal;
+  packagingCostByChannel: Record<string, Decimal>;
   portions: number;
   breakdown: CostBreakdownLine[];
+  packagingBreakdownByChannel: Record<string, PackagingCostBreakdownLine[]>;
 }
 
 export class MissingRecipeReferenceError extends Error {
@@ -94,6 +109,33 @@ export class InvalidSubRecipeError extends Error {
     super('Only a sub-recipe can be used as an item in another recipe.');
     this.name = 'InvalidSubRecipeError';
   }
+}
+
+export class InvalidPackagingOnSubRecipeError extends Error {
+  constructor() {
+    super('Packaging can only be added to a dish, not a sub-recipe.');
+    this.name = 'InvalidPackagingOnSubRecipeError';
+  }
+}
+
+export function packagingCostPerPortion(
+  lines: RecipePackagingCostLine[],
+  channelId: string,
+  fractionDigits: number,
+) {
+  const scale = new Decimal(10).pow(fractionDigits);
+  return lines.reduce((total, line) => {
+    const quantity = new Decimal(line.quantityPerPortion);
+    if (quantity.lt(0) || line.piecesPerPack < 1 || line.packPriceMinor < 0) {
+      throw new Error('Packaging quantities, pack sizes, and prices must be non-negative.');
+    }
+    if (line.appliesTo === 'selected' && !line.channelIds.includes(channelId)) {
+      return total;
+    }
+    return total.plus(
+      new Decimal(line.packPriceMinor).div(scale).div(line.piecesPerPack).mul(quantity),
+    );
+  }, new Decimal(0));
 }
 
 export function recipeItemCost(
@@ -136,41 +178,28 @@ export function recipeItemCost(
     }).mul(baseQuantity.quantity);
   }
 
-  if (line.kind === 'recipe') {
-    if (!line.detail) {
-      throw new MissingRecipeReferenceError();
-    }
-    if (!line.detail.isSubRecipe) {
-      throw new InvalidSubRecipeError();
-    }
-    if (ancestry.has(line.detail.id)) {
-      throw new RecipeCycleError();
-    }
-    const nestedCost = computeRecipeCost(
-      line.detail,
-      wastePct,
-      fractionDigits,
-      new Set([...ancestry, line.detail.id]),
-      unitSizes,
-    );
-    const amount = quantityInBaseUnits(line.quantity, line.unit, undefined, unitSizes);
-    const yieldUnit = quantityInBaseUnits('1', line.detail.batchYieldUnit, undefined, unitSizes).unit;
-    if (amount.unit !== yieldUnit) {
-      throw new UnitMismatchError();
-    }
-    return nestedCost.costPerYieldUnit.mul(amount.quantity);
-  }
-
-  if (!line.packaging) {
+  if (!line.detail) {
     throw new MissingRecipeReferenceError();
   }
-  const packageQuantity = quantityInBaseUnits(line.quantity, line.unit);
-  if (packageQuantity.unit !== 'pc') {
+  if (!line.detail.isSubRecipe) {
+    throw new InvalidSubRecipeError();
+  }
+  if (ancestry.has(line.detail.id)) {
+    throw new RecipeCycleError();
+  }
+  const nestedCost = computeRecipeCost(
+    line.detail,
+    wastePct,
+    fractionDigits,
+    new Set([...ancestry, line.detail.id]),
+    unitSizes,
+  );
+  const amount = quantityInBaseUnits(line.quantity, line.unit, undefined, unitSizes);
+  const yieldUnit = quantityInBaseUnits('1', line.detail.batchYieldUnit, undefined, unitSizes).unit;
+  if (amount.unit !== yieldUnit) {
     throw new UnitMismatchError();
   }
-  return new Decimal(line.packaging.costMinor)
-    .div(new Decimal(10).pow(fractionDigits))
-    .mul(packageQuantity.quantity);
+  return nestedCost.foodCostPerYieldUnit.mul(amount.quantity);
 }
 
 function computeRecipeCost(
@@ -187,6 +216,9 @@ function computeRecipeCost(
   if (batchYieldQuantity.lte(0)) {
     throw new Error('Batch yield must be greater than zero.');
   }
+  if (recipe.isSubRecipe && recipe.packaging.length > 0) {
+    throw new InvalidPackagingOnSubRecipeError();
+  }
 
   const wastePercent = new Decimal(wastePct);
   if (wastePercent.lt(0)) {
@@ -194,28 +226,17 @@ function computeRecipeCost(
   }
   const laborMinutes = new Decimal(recipe.laborMinutes);
   const overheadValue = new Decimal(recipe.overheadValue);
-  if (
-    laborMinutes.lt(0) ||
-    recipe.laborRateMinor < 0 ||
-    overheadValue.lt(0)
-  ) {
+  if (laborMinutes.lt(0) || recipe.laborRateMinor < 0 || overheadValue.lt(0)) {
     throw new Error('Labor and overhead values cannot be negative.');
   }
 
   const wasteFactor = new Decimal(1).plus(wastePercent.div(100));
-  const componentLines = recipe.items.filter((line) => line.kind !== 'packaging');
-  const packagingLines = recipe.items.filter((line) => line.kind === 'packaging');
-  const ingredientSubtotal = componentLines.reduce(
+  const ingredientSubtotal = recipe.items.reduce(
     (total, line) =>
       total.plus(recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes)),
     new Decimal(0),
   );
-  const packagingPerPortion = packagingLines.reduce(
-    (total, line) =>
-      total.plus(recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes)),
-    new Decimal(0),
-  );
-  const laborCost = laborMinutes
+  const laborCost = new Decimal(laborMinutes)
     .mul(recipe.laborRateMinor)
     .div(60)
     .div(new Decimal(10).pow(fractionDigits));
@@ -225,22 +246,37 @@ function computeRecipeCost(
   if (recipe.overheadMode === 'flat') {
     overheadPerPortion = overheadValue;
   } else if (recipe.overheadMode === 'percent') {
-    overheadPerPortion = materialPerPortion
-      .plus(packagingPerPortion)
-      .mul(overheadValue)
-      .div(100);
+    overheadPerPortion = materialPerPortion.mul(overheadValue).div(100);
   }
-  const costPerPortion = materialPerPortion
-    .plus(packagingPerPortion)
+  const foodCostPerPortion = materialPerPortion
     .plus(laborCost.div(portions))
     .plus(overheadPerPortion);
-  const batchCost = costPerPortion.mul(portions);
+  const batchFoodCost = foodCostPerPortion.mul(portions);
   const yieldAmount = recipe.isSubRecipe ? batchYieldQuantity : new Decimal(recipe.portions);
   const batchYieldInBaseUnits = recipe.isSubRecipe
     ? quantityInBaseUnits(batchYieldQuantity.toString(), recipe.batchYieldUnit, undefined, unitSizes)
         .quantity
     : yieldAmount;
-  const costPerYieldUnit = batchCost.div(batchYieldInBaseUnits);
+  const foodCostPerYieldUnit = batchFoodCost.div(batchYieldInBaseUnits);
+
+  const packagingCostByChannel: Record<string, Decimal> = {};
+  const packagingBreakdownByChannel: Record<string, PackagingCostBreakdownLine[]> = {};
+  for (const channelId of recipe.channelIds) {
+    const channelLines = recipe.packaging.filter(
+      (line) => line.appliesTo === 'all' || line.channelIds.includes(channelId),
+    );
+    packagingCostByChannel[channelId] = packagingCostPerPortion(
+      channelLines,
+      channelId,
+      fractionDigits,
+    );
+    packagingBreakdownByChannel[channelId] = channelLines.map((line) => ({
+      id: line.id,
+      name: line.name,
+      quantityPerPortion: line.quantityPerPortion,
+      costPerPortion: packagingCostPerPortion([line], channelId, fractionDigits),
+    }));
+  }
 
   const breakdown: CostBreakdownLine[] = recipe.items.map((line) => {
     const lineCost = recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes);
@@ -250,13 +286,18 @@ function computeRecipeCost(
       name: line.name,
       quantity: line.quantity,
       unit: line.unit,
-      costPerPortion:
-        line.kind === 'packaging'
-          ? lineCost
-          : lineCost.mul(wasteFactor).div(portions),
+      costPerPortion: lineCost.mul(wasteFactor).div(portions),
     };
   });
-  return { batchCost, costPerPortion, costPerYieldUnit, portions, breakdown };
+  return {
+    batchFoodCost,
+    foodCostPerPortion,
+    foodCostPerYieldUnit,
+    packagingCostByChannel,
+    portions,
+    breakdown,
+    packagingBreakdownByChannel,
+  };
 }
 
 export function calculateRecipeCost(

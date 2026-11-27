@@ -7,17 +7,12 @@ import {
   globalSettings,
   ingredientPriceHistory,
   ingredients,
-  packagingItems,
   recipeChannelPrices,
   recipeItems,
   recipes,
 } from '@core/db/schema';
 
-import type {
-  StarterChannelTemplate,
-  StarterIngredientTemplate,
-  StarterPackagingTemplate,
-} from './starterTemplates';
+import type { StarterChannelTemplate, StarterIngredientTemplate } from './starterTemplates';
 
 export interface OnboardingDishInput {
   name: string;
@@ -27,10 +22,6 @@ export interface OnboardingDishInput {
     recipeQuantity: string;
   }[];
   sellingPriceMinor: number;
-  packaging?: {
-    template: StarterPackagingTemplate;
-    costMinor: number;
-  };
 }
 
 function assertPositiveAmount(value: number, label: string) {
@@ -117,10 +108,6 @@ export async function saveOnboardingDish(
     canonicalQuantity(ingredient.template.purchaseQuantity);
     canonicalQuantity(ingredient.recipeQuantity);
   }
-  if (input.packaging) {
-    assertPositiveAmount(input.packaging.costMinor, 'Packaging cost');
-  }
-
   await ensureChannels(database, channelTemplates);
   const now = new Date().toISOString();
   return database.transaction(async (transaction) => {
@@ -166,27 +153,6 @@ export async function saveOnboardingDish(
       });
     }
 
-    const additionalItems = [];
-    if (input.packaging) {
-      const [createdPackaging] = await transaction
-        .insert(packagingItems)
-        .values({
-          name: input.packaging.template.name,
-          costMinor: input.packaging.costMinor,
-          updatedAt: now,
-        })
-        .returning({ id: packagingItems.id });
-      if (!createdPackaging) {
-        throw new Error(`Packaging "${input.packaging.template.name}" could not be saved.`);
-      }
-      additionalItems.push({
-        kind: 'packaging' as const,
-        referenceId: createdPackaging.id,
-        quantity: '1',
-        unit: 'piece' as const,
-      });
-    }
-
     const [createdRecipe] = await transaction
       .insert(recipes)
       .values({
@@ -209,7 +175,7 @@ export async function saveOnboardingDish(
     }
 
     await transaction.insert(recipeItems).values(
-      [...ingredientItems, ...additionalItems].map((item) => ({
+      ingredientItems.map((item) => ({
         recipeId: createdRecipe.id,
         ...item,
       })),

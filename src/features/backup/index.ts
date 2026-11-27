@@ -18,6 +18,6 @@ export type {
   BackupMergeResult,
 } from './data/backupRepository';
 export type {
-  BackupV1,
+  BackupV2,
 } from './domain/backupFormat';
 export type { RecipeCostSheetData } from './domain/recipeCostSheet';

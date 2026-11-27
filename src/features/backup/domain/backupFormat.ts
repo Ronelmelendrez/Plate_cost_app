@@ -8,6 +8,11 @@ import {
   RECIPE_YIELD_UNITS,
 } from '@core/costing/units';
 import {
+  expandLegacyPackaging,
+  type LegacyRecipeItemRow,
+  type LegacyRecipeRow,
+} from '@core/db/migrations/packagingMigration';
+import {
   getAvailableRoundingRules,
   PRICE_ROUNDING_RULES,
 } from '@core/costing/suggestedPrice';
@@ -19,6 +24,8 @@ import type {
   packagingItems,
   recipeChannelPrices,
   recipeItems,
+  recipePackaging,
+  recipePackagingChannels,
   recipes,
   unitConversions,
 } from '@core/db/schema';
@@ -30,6 +37,8 @@ type Recipe = typeof recipes.$inferSelect;
 type BackupRecipe = Omit<Recipe, 'imageUri'>;
 type RecipeItem = typeof recipeItems.$inferSelect;
 type PackagingItem = typeof packagingItems.$inferSelect;
+type RecipePackaging = typeof recipePackaging.$inferSelect;
+type RecipePackagingChannel = typeof recipePackagingChannels.$inferSelect;
 type Channel = typeof channels.$inferSelect;
 type RecipeChannelPrice = typeof recipeChannelPrices.$inferSelect;
 
@@ -49,9 +58,9 @@ export interface BackupGlobalSettings {
   is_initialized: boolean;
 }
 
-export interface BackupV1 {
+export interface BackupV2 {
   format: 'platecost-backup';
-  schema_version: 1;
+  schema_version: 2;
   exported_at: string;
   tables: {
     ingredients: Ingredient[];
@@ -60,6 +69,36 @@ export interface BackupV1 {
     recipes: BackupRecipe[];
     recipe_items: RecipeItem[];
     packaging_items: PackagingItem[];
+    recipe_packaging: RecipePackaging[];
+    recipe_packaging_channels: RecipePackagingChannel[];
+    global_settings: BackupGlobalSettings;
+    channels: Channel[];
+    recipe_channel_prices: RecipeChannelPrice[];
+  };
+}
+
+type LegacyRecipeItem = Omit<RecipeItem, 'kind'> & {
+  kind: 'ingredient' | 'recipe' | 'packaging';
+};
+
+interface LegacyPackagingItem {
+  id: string;
+  name: string;
+  costMinor: number;
+  updatedAt: string;
+}
+
+interface LegacyBackupV1 {
+  format: 'platecost-backup';
+  schema_version: 1;
+  exported_at: string;
+  tables: {
+    ingredients: Ingredient[];
+    unit_conversions: UnitConversion[];
+    ingredient_price_history: IngredientPriceHistory[];
+    recipes: BackupRecipe[];
+    recipe_items: LegacyRecipeItem[];
+    packaging_items: LegacyPackagingItem[];
     global_settings: BackupGlobalSettings;
     channels: Channel[];
     recipe_channel_prices: RecipeChannelPrice[];
@@ -262,6 +301,22 @@ function parseRecipeItems(value: unknown): RecipeItem[] {
       return {
         id: stringValue(row.id),
         recipeId: stringValue(row.recipeId),
+        kind: enumValue(row.kind, ['ingredient', 'recipe']),
+        referenceId: stringValue(row.referenceId),
+        quantity: positiveDecimalStringValue(row.quantity),
+        unit: enumValue(row.unit, RECIPE_UNITS),
+      };
+    }),
+  );
+}
+
+function parseLegacyRecipeItems(value: unknown): LegacyRecipeItem[] {
+  return assertUniqueIds(
+    arrayValue(value).map((entry): LegacyRecipeItem => {
+      const row = recordValue(entry);
+      return {
+        id: stringValue(row.id),
+        recipeId: stringValue(row.recipeId),
         kind: enumValue(row.kind, ['ingredient', 'recipe', 'packaging']),
         referenceId: stringValue(row.referenceId),
         quantity: positiveDecimalStringValue(row.quantity),
@@ -278,11 +333,59 @@ function parsePackagingItems(value: unknown): PackagingItem[] {
       return {
         id: stringValue(row.id),
         name: stringValue(row.name),
+        packPriceMinor: integerValue(row.packPriceMinor),
+        piecesPerPack: integerValue(row.piecesPerPack, 1),
+        note: nullableStringValue(row.note),
+        isFavourite: booleanValue(row.isFavourite),
+        lastUsedAt: nullableStringValue(row.lastUsedAt),
+        updatedAt: timestampValue(row.updatedAt),
+      };
+    }),
+  );
+}
+
+function parseLegacyPackagingItems(value: unknown): LegacyPackagingItem[] {
+  return assertUniqueIds(
+    arrayValue(value).map((entry): LegacyPackagingItem => {
+      const row = recordValue(entry);
+      return {
+        id: stringValue(row.id),
+        name: stringValue(row.name),
         costMinor: integerValue(row.costMinor),
         updatedAt: timestampValue(row.updatedAt),
       };
     }),
   );
+}
+
+function parseRecipePackaging(value: unknown): RecipePackaging[] {
+  return assertUniqueIds(
+    arrayValue(value).map((entry): RecipePackaging => {
+      const row = recordValue(entry);
+      return {
+        id: stringValue(row.id),
+        recipeId: stringValue(row.recipeId),
+        packagingId: stringValue(row.packagingId),
+        qtyPerPortion: positiveDecimalStringValue(row.qtyPerPortion),
+        appliesTo: enumValue(row.appliesTo, ['all', 'selected']),
+      };
+    }),
+  );
+}
+
+function parseRecipePackagingChannels(value: unknown): RecipePackagingChannel[] {
+  const rows = arrayValue(value).map((entry): RecipePackagingChannel => {
+    const row = recordValue(entry);
+    return {
+      recipePackagingId: stringValue(row.recipePackagingId),
+      channelId: stringValue(row.channelId),
+    };
+  });
+  const uniquePairs = new Set(rows.map((row) => `${row.recipePackagingId}\u0000${row.channelId}`));
+  if (uniquePairs.size !== rows.length) {
+    fail();
+  }
+  return rows;
 }
 
 function parseGlobalSettings(value: unknown): BackupGlobalSettings {
@@ -365,28 +468,11 @@ function parseRecipeChannelPrices(value: unknown): RecipeChannelPrice[] {
   return rows;
 }
 
-function validateReferences(tables: BackupV1['tables']) {
-  const ingredientIds = new Set(tables.ingredients.map((row) => row.id));
-  const packagingIds = new Set(tables.packaging_items.map((row) => row.id));
-  const recipeById = new Map(tables.recipes.map((row) => [row.id, row]));
-  const channelIds = new Set(tables.channels.map((row) => row.id));
-
-  if (
-    tables.unit_conversions.some((row) => !ingredientIds.has(row.ingredientId)) ||
-    tables.ingredient_price_history.some((row) => !ingredientIds.has(row.ingredientId))
-  ) {
-    fail();
-  }
-
+function validateRecipeGraph(recipes: BackupRecipe[], items: LegacyRecipeItem[]) {
+  const recipeById = new Map(recipes.map((row) => [row.id, row]));
   const recipeEdges = new Map<string, string[]>();
-  for (const item of tables.recipe_items) {
+  for (const item of items) {
     if (!recipeById.has(item.recipeId)) {
-      fail();
-    }
-    if (item.kind === 'ingredient' && !ingredientIds.has(item.referenceId)) {
-      fail();
-    }
-    if (item.kind === 'packaging' && !packagingIds.has(item.referenceId)) {
       fail();
     }
     if (item.kind === 'recipe') {
@@ -397,13 +483,6 @@ function validateReferences(tables: BackupV1['tables']) {
       const children = recipeEdges.get(item.recipeId) ?? [];
       children.push(item.referenceId);
       recipeEdges.set(item.recipeId, children);
-    }
-  }
-
-  for (const price of tables.recipe_channel_prices) {
-    const recipe = recipeById.get(price.recipeId);
-    if (!recipe || recipe.isSubRecipe || !channelIds.has(price.channelId)) {
-      fail();
     }
   }
 
@@ -426,26 +505,209 @@ function validateReferences(tables: BackupV1['tables']) {
     visited.add(id);
     return false;
   };
-  if (tables.recipes.some((recipe) => hasCycle(recipe.id))) {
+  if (recipes.some((recipe) => hasCycle(recipe.id))) {
     fail();
   }
 }
 
-export function validateBackup(value: unknown): BackupV1 {
+function validateCurrentReferences(tables: BackupV2['tables']) {
+  const ingredientIds = new Set(tables.ingredients.map((row) => row.id));
+  const packagingIds = new Set(tables.packaging_items.map((row) => row.id));
+  const channelIds = new Set(tables.channels.map((row) => row.id));
+  const recipePackagingIds = new Set(tables.recipe_packaging.map((row) => row.id));
+
+  if (
+    tables.unit_conversions.some((row) => !ingredientIds.has(row.ingredientId)) ||
+    tables.ingredient_price_history.some((row) => !ingredientIds.has(row.ingredientId))
+  ) {
+    fail();
+  }
+
+  for (const item of tables.recipe_items) {
+    if (item.kind === 'ingredient' && !ingredientIds.has(item.referenceId)) {
+      fail();
+    }
+  }
+  validateRecipeGraph(
+    tables.recipes,
+    tables.recipe_items.map((item) => ({ ...item, kind: item.kind })),
+  );
+
+  for (const line of tables.recipe_packaging) {
+    if (!packagingIds.has(line.packagingId) || !tables.recipes.some((row) => row.id === line.recipeId)) {
+      fail();
+    }
+  }
+  const channelLinksByLine = new Map<string, number>();
+  for (const link of tables.recipe_packaging_channels) {
+    if (!recipePackagingIds.has(link.recipePackagingId) || !channelIds.has(link.channelId)) {
+      fail();
+    }
+    channelLinksByLine.set(
+      link.recipePackagingId,
+      (channelLinksByLine.get(link.recipePackagingId) ?? 0) + 1,
+    );
+  }
+  if (
+    tables.recipe_packaging.some(
+      (line) =>
+        (line.appliesTo === 'selected' && !channelLinksByLine.has(line.id)) ||
+        (line.appliesTo === 'all' && channelLinksByLine.has(line.id)),
+    )
+  ) {
+    fail();
+  }
+  for (const price of tables.recipe_channel_prices) {
+    const recipe = tables.recipes.find((row) => row.id === price.recipeId);
+    if (!recipe || recipe.isSubRecipe || !channelIds.has(price.channelId)) {
+      fail();
+    }
+  }
+}
+
+function validateLegacyReferences(tables: LegacyBackupV1['tables']) {
+  const ingredientIds = new Set(tables.ingredients.map((row) => row.id));
+  const packagingIds = new Set(tables.packaging_items.map((row) => row.id));
+  const channelIds = new Set(tables.channels.map((row) => row.id));
+  if (
+    tables.unit_conversions.some((row) => !ingredientIds.has(row.ingredientId)) ||
+    tables.ingredient_price_history.some((row) => !ingredientIds.has(row.ingredientId))
+  ) {
+    fail();
+  }
+  for (const item of tables.recipe_items) {
+    if (
+      (item.kind === 'ingredient' && !ingredientIds.has(item.referenceId)) ||
+      (item.kind === 'packaging' &&
+        (!packagingIds.has(item.referenceId) || !['piece', 'pc'].includes(item.unit)))
+    ) {
+      fail();
+    }
+  }
+  validateRecipeGraph(tables.recipes, tables.recipe_items);
+  for (const price of tables.recipe_channel_prices) {
+    const recipe = tables.recipes.find((row) => row.id === price.recipeId);
+    if (!recipe || recipe.isSubRecipe || !channelIds.has(price.channelId)) {
+      fail();
+    }
+  }
+}
+
+function parseEnvelope(value: unknown, version: 1 | 2) {
   const backup = recordValue(value);
   if (
     backup.format !== 'platecost-backup' ||
-    backup.schema_version !== 1 ||
+    backup.schema_version !== version ||
     typeof backup.exported_at !== 'string' ||
     !Number.isFinite(Date.parse(backup.exported_at))
   ) {
     fail();
   }
-  const tables = recordValue(backup.tables);
-  const validated: BackupV1 = {
+  return { backup, tables: recordValue(backup.tables) };
+}
+
+function validateLegacyBackup(value: unknown): BackupV2 {
+  const { backup, tables } = parseEnvelope(value, 1);
+  const legacy: LegacyBackupV1 = {
     format: 'platecost-backup',
     schema_version: 1,
-    exported_at: backup.exported_at,
+    exported_at: stringValue(backup.exported_at),
+    tables: {
+      ingredients: parseIngredients(tables.ingredients),
+      unit_conversions: parseUnitConversions(tables.unit_conversions),
+      ingredient_price_history: parseIngredientPriceHistory(tables.ingredient_price_history),
+      recipes: parseRecipes(tables.recipes),
+      recipe_items: parseLegacyRecipeItems(tables.recipe_items),
+      packaging_items: parseLegacyPackagingItems(tables.packaging_items),
+      global_settings: parseGlobalSettings(tables.global_settings),
+      channels: parseChannels(tables.channels),
+      recipe_channel_prices: parseRecipeChannelPrices(tables.recipe_channel_prices),
+    },
+  };
+  validateLegacyReferences(legacy.tables);
+
+  const legacyRecipes: LegacyRecipeRow[] = legacy.tables.recipes.map((recipe) => ({
+    id: recipe.id,
+    portions: recipe.portions,
+    batch_yield_quantity: recipe.batchYieldQuantity,
+    batch_yield_unit: recipe.batchYieldUnit,
+    is_sub_recipe: Number(recipe.isSubRecipe),
+  }));
+  const legacyItems: LegacyRecipeItemRow[] = legacy.tables.recipe_items.map((item) => ({
+    id: item.id,
+    recipe_id: item.recipeId,
+    kind: item.kind,
+    reference_id: item.referenceId,
+    quantity: item.quantity,
+    unit: item.unit,
+  }));
+  const expanded = expandLegacyPackaging(
+    legacyRecipes,
+    legacyItems,
+    legacy.tables.global_settings.waste_pct,
+    {
+      cupMl: legacy.tables.global_settings.cup_ml,
+      tablespoonMl: legacy.tables.global_settings.tablespoon_ml,
+    },
+  );
+  const recipePackaging = expanded.dishLines
+    .map((line, index): RecipePackaging => ({
+      id: line.id ?? `legacy-expanded-${line.recipeId}-${index}`,
+      recipeId: line.recipeId,
+      packagingId: line.packagingId,
+      qtyPerPortion: line.quantity,
+      appliesTo: 'all',
+    }))
+    .concat(
+      expanded.legacySubRecipeLines.map((line): RecipePackaging => ({
+        id: line.id,
+        recipeId: line.recipeId,
+        packagingId: line.packagingId,
+        qtyPerPortion: line.quantity,
+        appliesTo: 'all',
+      })),
+    );
+
+  return {
+    format: 'platecost-backup',
+    schema_version: 2,
+    exported_at: legacy.exported_at,
+    tables: {
+      ingredients: legacy.tables.ingredients,
+      unit_conversions: legacy.tables.unit_conversions,
+      ingredient_price_history: legacy.tables.ingredient_price_history,
+      recipes: legacy.tables.recipes,
+      recipe_items: legacy.tables.recipe_items
+        .filter((item): item is RecipeItem => item.kind !== 'packaging'),
+      packaging_items: legacy.tables.packaging_items.map((item): PackagingItem => ({
+        id: item.id,
+        name: item.name,
+        packPriceMinor: item.costMinor,
+        piecesPerPack: 1,
+        note: null,
+        isFavourite: false,
+        lastUsedAt: null,
+        updatedAt: item.updatedAt,
+      })),
+      recipe_packaging: recipePackaging,
+      recipe_packaging_channels: [],
+      global_settings: legacy.tables.global_settings,
+      channels: legacy.tables.channels,
+      recipe_channel_prices: legacy.tables.recipe_channel_prices,
+    },
+  };
+}
+
+export function validateBackup(value: unknown): BackupV2 {
+  const envelope = recordValue(value);
+  if (envelope.schema_version === 1) {
+    return validateLegacyBackup(value);
+  }
+  const { backup, tables } = parseEnvelope(value, 2);
+  const validated: BackupV2 = {
+    format: 'platecost-backup',
+    schema_version: 2,
+    exported_at: stringValue(backup.exported_at),
     tables: {
       ingredients: parseIngredients(tables.ingredients),
       unit_conversions: parseUnitConversions(tables.unit_conversions),
@@ -453,16 +715,18 @@ export function validateBackup(value: unknown): BackupV1 {
       recipes: parseRecipes(tables.recipes),
       recipe_items: parseRecipeItems(tables.recipe_items),
       packaging_items: parsePackagingItems(tables.packaging_items),
+      recipe_packaging: parseRecipePackaging(tables.recipe_packaging),
+      recipe_packaging_channels: parseRecipePackagingChannels(tables.recipe_packaging_channels),
       global_settings: parseGlobalSettings(tables.global_settings),
       channels: parseChannels(tables.channels),
       recipe_channel_prices: parseRecipeChannelPrices(tables.recipe_channel_prices),
     },
   };
-  validateReferences(validated.tables);
+  validateCurrentReferences(validated.tables);
   return validated;
 }
 
-export function parseBackup(text: string): BackupV1 {
+export function parseBackup(text: string): BackupV2 {
   if (text.length > MAX_BACKUP_CHARACTERS) {
     fail();
   }

@@ -1,6 +1,13 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 7;
+import { DEFAULT_RECIPE_UNIT_SIZES } from '@core/costing/units';
+import {
+  expandLegacyPackaging,
+  type LegacyRecipeItemRow,
+  type LegacyRecipeRow,
+} from './packagingMigration';
+
+const DATABASE_VERSION = 8;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -192,5 +199,120 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
         PRAGMA user_version = 7;
       `);
     });
+  }
+
+  if (currentVersion < 8) {
+    await db.withTransactionAsync(async () => {
+      const [legacyRecipes, legacyItems, settings] = await Promise.all([
+        db.getAllAsync<LegacyRecipeRow>(
+          `SELECT id, portions, batch_yield_quantity, batch_yield_unit, is_sub_recipe
+           FROM recipes`,
+        ),
+        db.getAllAsync<LegacyRecipeItemRow>(
+          `SELECT id, recipe_id, kind, reference_id, quantity, unit
+           FROM recipe_items`,
+        ),
+        db.getFirstAsync<{ waste_pct: string; cup_ml: string; tablespoon_ml: string }>(
+          `SELECT waste_pct, cup_ml, tablespoon_ml FROM global_settings WHERE id = 1`,
+        ),
+      ]);
+      const wastePct = settings?.waste_pct ?? '5';
+      const unitSizes = {
+        cupMl: settings?.cup_ml ?? DEFAULT_RECIPE_UNIT_SIZES.cupMl,
+        tablespoonMl:
+          settings?.tablespoon_ml ?? DEFAULT_RECIPE_UNIT_SIZES.tablespoonMl,
+      };
+      const { dishLines, legacySubRecipeLines } = expandLegacyPackaging(
+        legacyRecipes,
+        legacyItems,
+        wastePct,
+        unitSizes,
+      );
+
+      await db.execAsync(`
+        CREATE TABLE packaging_items_v8 (
+          id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+          name TEXT NOT NULL,
+          pack_price_minor INTEGER NOT NULL,
+          pieces_per_pack INTEGER NOT NULL DEFAULT 1,
+          note TEXT,
+          is_favourite INTEGER NOT NULL DEFAULT 0,
+          last_used_at TEXT,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO packaging_items_v8 (
+          id, name, pack_price_minor, pieces_per_pack, note, is_favourite, last_used_at, updated_at
+        )
+        SELECT id, name, cost_minor, 1, NULL, 0, NULL, updated_at FROM packaging_items;
+        DROP INDEX packaging_items_name_idx;
+        DROP TABLE packaging_items;
+        ALTER TABLE packaging_items_v8 RENAME TO packaging_items;
+        CREATE INDEX packaging_items_name_idx ON packaging_items(name);
+
+        CREATE TABLE recipe_packaging (
+          id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+          recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+          packaging_id TEXT NOT NULL REFERENCES packaging_items(id) ON DELETE CASCADE,
+          qty_per_portion TEXT NOT NULL,
+          applies_to TEXT NOT NULL DEFAULT 'all'
+            CHECK (applies_to IN ('all', 'selected'))
+        );
+        CREATE INDEX recipe_packaging_recipe_idx ON recipe_packaging(recipe_id);
+        CREATE INDEX recipe_packaging_packaging_idx ON recipe_packaging(packaging_id);
+
+        CREATE TABLE recipe_packaging_channels (
+          recipe_packaging_id TEXT NOT NULL
+            REFERENCES recipe_packaging(id) ON DELETE CASCADE,
+          channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+          UNIQUE (recipe_packaging_id, channel_id)
+        );
+        CREATE INDEX recipe_packaging_channel_channel_idx
+          ON recipe_packaging_channels(channel_id);
+
+        CREATE TABLE recipe_items_v8 (
+          id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+          recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('ingredient', 'recipe')),
+          reference_id TEXT NOT NULL,
+          quantity TEXT NOT NULL,
+          unit TEXT NOT NULL CHECK (
+            unit IN ('kg', 'g', 'lb', 'oz', 'L', 'ml', 'fl oz', 'piece', 'pc', 'cup', 'tbsp', 'tsp', 'portion')
+          )
+        );
+        INSERT INTO recipe_items_v8 (id, recipe_id, kind, reference_id, quantity, unit)
+        SELECT id, recipe_id, kind, reference_id, quantity, unit
+        FROM recipe_items
+        WHERE kind IN ('ingredient', 'recipe');
+        DROP INDEX recipe_items_recipe_idx;
+        DROP INDEX recipe_items_reference_idx;
+        DROP TABLE recipe_items;
+        ALTER TABLE recipe_items_v8 RENAME TO recipe_items;
+        CREATE INDEX recipe_items_recipe_idx ON recipe_items(recipe_id);
+        CREATE INDEX recipe_items_reference_idx ON recipe_items(kind, reference_id);
+        PRAGMA user_version = 8;
+      `);
+
+      for (const line of [...dishLines, ...legacySubRecipeLines]) {
+        if (line.id) {
+          await db.runAsync(
+            `INSERT INTO recipe_packaging (id, recipe_id, packaging_id, qty_per_portion, applies_to)
+             VALUES (?, ?, ?, ?, 'all')`,
+            line.id,
+            line.recipeId,
+            line.packagingId,
+            line.quantity,
+          );
+        } else {
+          await db.runAsync(
+            `INSERT INTO recipe_packaging (recipe_id, packaging_id, qty_per_portion, applies_to)
+             VALUES (?, ?, ?, 'all')`,
+            line.recipeId,
+            line.packagingId,
+            line.quantity,
+          );
+        }
+      }
+    });
+    currentVersion = 8;
   }
 }
