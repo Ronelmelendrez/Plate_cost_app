@@ -1,4 +1,5 @@
 import { Decimal } from 'decimal.js';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useMemo, useState } from 'react';
 import { SymbolView } from 'expo-symbols';
 import { router, useFocusEffect } from 'expo-router';
@@ -41,7 +42,7 @@ import {
 } from '../data/starterTemplates';
 import { getMarginStatus, type MarginStatus } from '@features/dashboard/domain/marginDashboard';
 import { Button, TextField } from '@shared/ui';
-import { Colors } from '@shared/theme';
+import { Colors, HERO_GRADIENT, HERO_TOP } from '@shared/theme';
 
 type ChannelSummary = {
   name: string;
@@ -437,6 +438,22 @@ export default function OnboardingScreen() {
         : step === 2
           ? t('onboarding.dishContinue')
           : t('onboarding.finish');
+  const screenTitle =
+    step === 0
+      ? t('onboarding.setupTitle')
+      : step === 1
+        ? t('onboarding.ingredientTitle')
+        : step === 2
+          ? t('onboarding.recipeTitle')
+          : t('onboarding.resultTitle');
+  const screenDescription =
+    step === 0
+      ? t('onboarding.setupDescription')
+      : step === 1
+        ? t('onboarding.ingredientDescription')
+        : step === 2
+          ? t('onboarding.recipeDescription')
+          : t('onboarding.resultDescription');
 
   const handleContinue = () => {
     if (step === 0) {
@@ -452,27 +469,47 @@ export default function OnboardingScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-background">
-        <Text className="text-base text-muted">{t('onboarding.loading')}</Text>
+      <SafeAreaView
+        edges={['top']}
+        className="flex-1 bg-background"
+        style={{ backgroundColor: HERO_TOP }}>
+        <LinearGradient
+          colors={HERO_GRADIENT}
+          style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 }}>
+          <Text className="font-inter-extrabold text-[20px] text-white">PlateCost</Text>
+        </LinearGradient>
+        <View className="flex-1 items-center justify-center bg-background px-4">
+          <Text className="font-inter text-[15px] text-muted">{t('onboarding.loading')}</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   if (loadError || !settings || !starterTemplates) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-background px-6">
-        <View className="w-full max-w-md gap-4">
-          <Text className="text-center text-base text-ink">
-            {t('onboarding.loadError')}
-          </Text>
-          <Button
-            label={t('onboarding.retry')}
-            onPress={() => {
-              setLoadError(false);
-              setIsLoading(true);
-              void loadSetup();
-            }}
-          />
+      <SafeAreaView
+        edges={['top']}
+        className="flex-1 bg-background"
+        style={{ backgroundColor: HERO_TOP }}>
+        <LinearGradient
+          colors={HERO_GRADIENT}
+          style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 }}>
+          <Text className="font-inter-extrabold text-[20px] text-white">PlateCost</Text>
+        </LinearGradient>
+        <View className="flex-1 justify-center bg-background px-4">
+          <View className="gap-3 rounded-3xl border border-line bg-badSoft p-4 shadow-sm">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
+              {t('onboarding.loadError')}
+            </Text>
+            <Button
+              label={t('onboarding.retry')}
+              onPress={() => {
+                setLoadError(false);
+                setIsLoading(true);
+                void loadSetup();
+              }}
+            />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -481,35 +518,45 @@ export default function OnboardingScreen() {
   const statusStyles = preview ? marginStatusStyles[preview.status] : undefined;
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 }}
-        keyboardShouldPersistTaps="handled">
-        <View className="mb-6 flex-row items-center justify-between">
+    <SafeAreaView
+      edges={['top']}
+      className="flex-1 bg-background"
+      style={{ backgroundColor: HERO_TOP }}>
+      <LinearGradient
+        colors={HERO_GRADIENT}
+        style={{ paddingHorizontal: 16, paddingBottom: 18, paddingTop: 8 }}>
+        <View className="mb-4 flex-row items-center justify-between gap-3">
           {step > 0 && step < 3 ? (
             <Pressable
               accessibilityRole="button"
-              className="min-h-12 justify-center pe-4"
+              accessibilityLabel={step === 1 ? t('onboarding.setupBack') : t('onboarding.ingredientsBack')}
+              className="min-h-11 flex-row items-center gap-2 rounded-full border border-white/30 bg-white/15 px-3.5"
               onPress={() => {
                 setFormError('');
                 setStep((current) => current - 1);
               }}>
-              <Text className="font-semibold text-brand">
+              <SymbolView
+                name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+                tintColor="#FFFFFF"
+                size={18}
+              />
+              <Text className="font-inter-semibold text-[13px] text-white">
                 {step === 1 ? t('onboarding.setupBack') : t('onboarding.ingredientsBack')}
               </Text>
             </Pressable>
           ) : (
-            <View />
+            <Text className="font-inter-extrabold text-[20px] text-white">PlateCost</Text>
           )}
           {step < 3 ? (
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: isSaving }}
-              className="min-h-12 justify-center ps-4"
+              className="min-h-11 justify-center rounded-full border border-white/30 bg-white/15 px-4"
               disabled={isSaving}
               onPress={() => void handleSkip()}>
-              <Text className="font-semibold text-brand">{t('onboarding.skip')}</Text>
+              <Text className="font-inter-semibold text-[13px] text-white">
+                {t('onboarding.skip')}
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -517,33 +564,39 @@ export default function OnboardingScreen() {
         {step > 0 ? (
           <View
             accessibilityLabel={t('onboarding.progress', { current: step })}
-            className="mb-6 flex-row gap-2">
+            className="mb-4 flex-row gap-2">
             {[1, 2, 3].map((progressStep) => (
               <View
                 key={progressStep}
                 className={`h-1.5 flex-1 rounded-full ${
-                  progressStep <= step ? 'bg-brand' : 'bg-line'
+                  progressStep <= step ? 'bg-white' : 'bg-white/35'
                 }`}
               />
             ))}
           </View>
         ) : null}
 
+        <View className="gap-1.5">
+          <Text accessibilityRole="header" className="font-inter-extrabold text-[26px] leading-[32px] text-white">
+            {screenTitle}
+          </Text>
+          <Text className="font-inter text-[14px] leading-[20px] text-white">
+            {screenDescription}
+          </Text>
+        </View>
+      </LinearGradient>
+
+      <ScrollView
+        className="flex-1 bg-background"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
+        keyboardShouldPersistTaps="handled">
         {step === 0 ? (
-          <View className="gap-5">
-            <View className="gap-2">
-              <Text className="text-3xl font-bold text-ink">
-                {t('onboarding.setupTitle')}
-              </Text>
-              <Text className="text-base leading-6 text-muted">
-                {t('onboarding.setupDescription')}
-              </Text>
-            </View>
-            <View className="gap-2 rounded-2xl border border-line bg-surface p-4">
-              <Text className="text-sm font-semibold text-muted">
+          <View className="gap-4">
+            <View className="gap-2 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+              <Text className="font-inter-semibold text-[11px] uppercase tracking-[0.6px] text-muted">
                 {t('onboarding.language')}
               </Text>
-              <Text className="text-base font-semibold text-ink">
+              <Text className="font-inter-semibold text-[15px] text-ink">
                 {t('onboarding.languageValue')}
               </Text>
             </View>
@@ -555,7 +608,7 @@ export default function OnboardingScreen() {
               accessibilityLabel={t('onboarding.currency')}
             />
             <View className="gap-2">
-              <Text className="text-sm font-semibold text-ink">
+              <Text className="font-inter-bold text-[11px] uppercase tracking-[0.8px] text-brand">
                 {t('onboarding.unitSystem')}
               </Text>
               <View className="flex-row gap-3">
@@ -566,13 +619,13 @@ export default function OnboardingScreen() {
                       key={unitSystem}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
-                      className={`min-h-12 flex-1 items-center justify-center rounded-xl border px-3 ${
-                        selected ? 'border-brand bg-brand/10' : 'border-line bg-surface'
+                      className={`min-h-12 flex-1 items-center justify-center rounded-2xl border px-3 ${
+                        selected ? 'border-brand bg-brand' : 'border-line bg-surface'
                       }`}
                       onPress={() => updateUnitSystem(unitSystem)}>
                       <Text
-                        className={`text-sm font-semibold ${
-                          selected ? 'text-brand' : 'text-ink'
+                        className={`font-inter-semibold text-[14px] ${
+                          selected ? 'text-white' : 'text-ink'
                         }`}>
                         {t(`onboarding.${unitSystem}`)}
                       </Text>
@@ -585,19 +638,20 @@ export default function OnboardingScreen() {
         ) : null}
 
         {step === 1 ? (
-          <View className="gap-5">
-            <View className="gap-2">
-              <Text className="text-3xl font-bold text-ink">
-                {t('onboarding.ingredientTitle')}
-              </Text>
-              <Text className="text-base leading-6 text-muted">
-                {t('onboarding.ingredientDescription')}
-              </Text>
-              <Text className="text-sm font-semibold text-brand">
+          <View className="gap-4">
+            <View className="flex-row items-center justify-between gap-3 rounded-2xl border border-line bg-brandSoft px-4 py-3">
+              <Text className="font-inter-semibold text-[14px] text-brand">
                 {t('onboarding.ingredientCount', {
                   selected: selectedIngredients.length,
                 })}
               </Text>
+              {selectedIngredients.length === 3 ? (
+                <SymbolView
+                  name={{ ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' }}
+                  tintColor={Colors.light.tint}
+                  size={20}
+                />
+              ) : null}
             </View>
             {starterIngredients.map((ingredient) => {
               const selected = selectedIngredientIds.includes(ingredient.id);
@@ -605,8 +659,8 @@ export default function OnboardingScreen() {
               return (
                 <View
                   key={ingredient.id}
-                  className={`gap-3 rounded-2xl border p-4 ${
-                    selected ? 'border-brand bg-surface' : 'border-line bg-surface'
+                  className={`gap-3 rounded-3xl border p-4 shadow-sm ${
+                    selected ? 'border-brand bg-brandSoft' : 'border-line bg-surface'
                   }`}>
                   <Pressable
                     accessibilityRole="checkbox"
@@ -614,14 +668,14 @@ export default function OnboardingScreen() {
                     className="min-h-12 flex-row items-center justify-between gap-3"
                     onPress={() => toggleIngredient(ingredient)}>
                     <View className="flex-1">
-                      <Text className="text-base font-semibold text-ink">
+                      <Text className="font-inter-semibold text-[15px] text-ink">
                         {ingredient.name}
                       </Text>
-                      <Text className="mt-1 text-sm text-muted">
+                      <Text className="mt-1 font-inter text-[13px] text-muted">
                         {ingredient.purchaseQuantity} {ingredient.purchaseUnit}
                       </Text>
                     </View>
-                    <Text className="text-sm font-semibold text-brand">
+                    <Text className="font-inter-semibold text-[13px] text-brand">
                       {selected ? t('onboarding.selected') : t('onboarding.select')}
                     </Text>
                   </Pressable>
@@ -657,17 +711,9 @@ export default function OnboardingScreen() {
         ) : null}
 
         {step === 2 ? (
-          <View className="gap-5">
-            <View className="gap-2">
-              <Text className="text-3xl font-bold text-ink">
-                {t('onboarding.recipeTitle')}
-              </Text>
-              <Text className="text-base leading-6 text-muted">
-                {t('onboarding.recipeDescription')}
-              </Text>
-            </View>
-            <View className="gap-4 rounded-2xl border border-line bg-surface p-4">
-              <Text className="text-base font-semibold text-ink">
+          <View className="gap-4">
+            <View className="gap-4 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+              <Text className="font-inter-bold text-[11px] uppercase tracking-[0.8px] text-brand">
                 {t('onboarding.firstDishName')}
               </Text>
               {selectedIngredients.map((ingredient) => (
@@ -707,22 +753,22 @@ export default function OnboardingScreen() {
                 suffix={currencyParts.suffix}
               />
             </View>
-            <View className="gap-3 rounded-2xl border border-line bg-surface p-4">
-              <Text className="text-base font-semibold text-ink">
+            <View className="gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+              <Text className="font-inter-semibold text-[15px] text-ink">
                 {t('onboarding.packaging')}
               </Text>
               <View className="flex-row flex-wrap gap-2">
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{ checked: !selectedPackagingId }}
-                  className={`min-h-12 justify-center rounded-xl border px-3 ${
-                    !selectedPackagingId ? 'border-brand bg-brand/10' : 'border-line'
+                  className={`min-h-11 justify-center rounded-full border px-4 ${
+                    !selectedPackagingId ? 'border-brand bg-brand' : 'border-line bg-background'
                   }`}
                   onPress={() => {
                     setSelectedPackagingId(undefined);
                     setPackagingPrice('');
                   }}>
-                  <Text className="text-sm font-semibold text-ink">
+                  <Text className={`font-inter-semibold text-[13px] ${!selectedPackagingId ? 'text-white' : 'text-ink'}`}>
                     {t('onboarding.noPackaging')}
                   </Text>
                 </Pressable>
@@ -733,14 +779,16 @@ export default function OnboardingScreen() {
                       key={item.id}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
-                      className={`min-h-12 justify-center rounded-xl border px-3 ${
-                        selected ? 'border-brand bg-brand/10' : 'border-line'
+                      className={`min-h-11 justify-center rounded-full border px-4 ${
+                        selected ? 'border-brand bg-brand' : 'border-line bg-background'
                       }`}
                       onPress={() => {
                         setSelectedPackagingId(item.id);
                         setFormError('');
                       }}>
-                      <Text className="text-sm font-semibold text-ink">{item.name}</Text>
+                      <Text className={`font-inter-semibold text-[13px] ${selected ? 'text-white' : 'text-ink'}`}>
+                        {item.name}
+                      </Text>
                     </Pressable>
                   );
                 })}
@@ -767,30 +815,22 @@ export default function OnboardingScreen() {
         ) : null}
 
         {step === 3 && preview && statusStyles ? (
-          <View className="gap-5">
-            <View className="gap-2">
-              <Text className="text-3xl font-bold text-ink">
-                {t('onboarding.resultTitle')}
-              </Text>
-              <Text className="text-base leading-6 text-muted">
-                {t('onboarding.resultDescription')}
-              </Text>
-            </View>
-            <View className="gap-4 rounded-2xl border border-line bg-surface p-5">
+          <View className="gap-4">
+            <View className="gap-4 rounded-3xl border border-line bg-surface p-4 shadow-sm">
               <View className="flex-row items-center justify-between gap-3">
-                <Text className="text-base text-muted">
+                <Text className="flex-1 font-inter-semibold text-[14px] text-muted">
                   {t('onboarding.margin')}
                 </Text>
-                <View className="flex-row items-center gap-2">
+                <View className="flex-row items-center gap-1.5 rounded-full bg-background px-3 py-2">
                   <SymbolView
                     name={statusStyles.icon}
                     tintColor={statusStyles.color}
                     size={22}
                   />
-                  <Text style={{ color: statusStyles.color }} className="font-semibold">
+                  <Text style={{ color: statusStyles.color }} className="font-inter-semibold text-[12px]">
                     {t(`dashboard.status.${preview.status}`)}
                   </Text>
-                  <Text className="text-xl font-bold text-ink">
+                  <Text className="font-inter-extrabold text-[20px] text-ink">
                     {formatPercent(preview.marginPct, locale)}
                   </Text>
                 </View>
@@ -809,19 +849,19 @@ export default function OnboardingScreen() {
                 value={formatCurrency(preview.profit, currencyCode, locale)}
               />
             </View>
-            <View className="gap-3 rounded-2xl border border-line bg-surface p-4">
-              <Text className="text-base font-semibold text-ink">
+            <View className="gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+              <Text className="font-inter-semibold text-[15px] text-ink">
                 {t('onboarding.channelRates')}
               </Text>
-              <Text className="text-sm leading-5 text-muted">
+              <Text className="font-inter text-[13px] leading-[18px] text-muted">
                 {t('onboarding.channelRatesHelp')}
               </Text>
               {preview.channels.map((channel) => (
                 <View
                   key={channel.name}
                   className="flex-row items-center justify-between gap-3 border-t border-line pt-3">
-                  <Text className="flex-1 text-sm font-medium text-ink">{channel.name}</Text>
-                  <Text className="text-right text-sm text-muted">
+                  <Text className="flex-1 font-inter-medium text-[13px] text-ink">{channel.name}</Text>
+                  <Text className="text-right font-inter text-[12px] text-muted">
                     {t('onboarding.channelFees', {
                       commission: formatFee(channel.commissionPct),
                       payment: formatFee(channel.paymentFeePct),
@@ -834,19 +874,21 @@ export default function OnboardingScreen() {
         ) : null}
 
         {formError ? (
-          <Text accessibilityRole="alert" className="mt-5 text-sm text-bad">
-            {formError}
-          </Text>
+          <View className="mt-4 rounded-2xl border border-line bg-badSoft p-3.5">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
+              {formError}
+            </Text>
+          </View>
         ) : null}
         {step === 1 && selectedIngredients.length < 3 ? (
-          <Text className="mt-4 text-sm text-muted">
+          <Text className="rounded-2xl border border-line bg-surface p-3.5 font-inter text-[13px] leading-[18px] text-muted">
             {t('onboarding.chooseThree')}
           </Text>
         ) : null}
       </ScrollView>
 
       <View
-        className="border-t border-line bg-background px-5 pt-4"
+        className="border-t border-line bg-surface px-4 pt-3"
         style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
         <Button
           label={footerLabel}
@@ -861,8 +903,8 @@ export default function OnboardingScreen() {
 function ResultRow({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row items-center justify-between gap-4">
-      <Text className="text-base text-muted">{label}</Text>
-      <Text className="text-base font-semibold text-ink">{value}</Text>
+      <Text className="font-inter text-[14px] text-muted">{label}</Text>
+      <Text className="font-inter-semibold text-[15px] text-ink">{value}</Text>
     </View>
   );
 }
