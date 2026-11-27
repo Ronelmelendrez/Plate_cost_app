@@ -811,7 +811,7 @@ export default function RecipeDetailScreen() {
 
       <ScrollView
         className="flex-1 bg-bg"
-        contentContainerClassName="gap-5 px-4 pb-6"
+        contentContainerStyle={{ gap: 20, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
         keyboardShouldPersistTaps="handled">
         {formError && isLoadError ? (
           <Pressable

@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { getLocales } from 'expo-localization';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState } from 'react';
@@ -43,7 +44,7 @@ import type { PriceChangeImpactReport } from '@features/impact/data/impactReposi
 import { getPriceChangeImpact } from '@features/impact/data/impactRepository';
 import { PriceChangeImpactSheet } from '@features/impact/components/PriceChangeImpactSheet';
 import { Button, TextField } from '@shared/ui';
-import { Colors } from '@shared/theme';
+import { Colors, HERO_GRADIENT, HERO_TOP } from '@shared/theme';
 
 const localeInfo = getLocales()[0];
 const deviceLocale = localeInfo?.languageTag ?? 'en-US';
@@ -73,7 +74,7 @@ function PriceHistory({
   const fractionDigits = currencyFractionDigits(currency, locale);
 
   if (records.length === 0) {
-    return <Text className="text-base text-muted">{t('ingredients.noPriceHistory')}</Text>;
+    return <Text className="font-inter text-base text-muted">{t('ingredients.noPriceHistory')}</Text>;
   }
 
   return (
@@ -81,17 +82,17 @@ function PriceHistory({
       {records.map((record) => (
         <View className="flex-row items-start justify-between border-b border-line py-3" key={record.id}>
           <View className="flex-1 gap-1">
-            <Text className="text-base font-semibold text-ink">
+            <Text className="text-base font-inter-semibold text-ink">
               {formatCurrency(priceForRecord(record, fractionDigits), currency, locale)}
             </Text>
-            <Text className="text-sm text-muted">
+            <Text className="font-inter text-sm text-muted">
               {t('ingredients.priceChange', {
                 quantity: record.purchaseQuantity,
                 unit: t(`units.${record.purchaseUnit}`),
               })}
             </Text>
           </View>
-          <Text className="ms-3 text-sm text-muted">
+          <Text className="ms-3 font-inter text-sm text-muted">
             {new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(
               new Date(record.recordedAt),
             )}
@@ -342,30 +343,37 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
     : '';
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
-      <View className="flex-row items-center px-4 pb-3 pt-1">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('ingredients.close')}
-          onPress={() => router.back()}
-          className="me-3 min-h-12 min-w-12 items-center justify-center">
-          <SymbolView
-            name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
-            tintColor={Colors.light.text}
-            size={24}
-          />
-        </Pressable>
-        <Text className="flex-1 text-xl font-semibold text-ink">
-          {isCreate ? t('ingredients.newIngredient') : t('ingredients.editIngredient')}
-        </Text>
-      </View>
+    <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: HERO_TOP }}>
+      <LinearGradient
+        colors={HERO_GRADIENT}
+        style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 }}>
+        <View className="flex-row items-center gap-3">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('ingredients.close')}
+            onPress={() => router.back()}
+            className="h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/15">
+            <SymbolView
+              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+              tintColor="#FFFFFF"
+              size={22}
+            />
+          </Pressable>
+          <Text
+            accessibilityRole="header"
+            numberOfLines={1}
+            className="min-w-0 flex-1 font-inter-extrabold text-[20px] leading-[26px] text-white">
+            {isCreate ? t('ingredients.newIngredient') : t('ingredients.editIngredient')}
+          </Text>
+        </View>
+      </LinearGradient>
 
       <ScrollView
-        className="flex-1"
-        contentContainerClassName="gap-5 px-4 pb-6"
+        className="flex-1 bg-bg"
+        contentContainerStyle={{ gap: 20, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
         keyboardShouldPersistTaps="handled">
         {formError ? (
-          <Text accessibilityRole="alert" className="text-base text-bad">
+          <Text accessibilityRole="alert" className="font-inter text-base text-bad">
             {formError}
           </Text>
         ) : null}
@@ -380,7 +388,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
           accessibilityLabel={t('ingredients.name')}
         />
         <View className="gap-2">
-          <Text className="text-sm font-semibold text-ink">{t('ingredients.buyBy')}</Text>
+          <Text className="text-sm font-inter-semibold text-ink">{t('ingredients.buyBy')}</Text>
           <View className="flex-row flex-wrap gap-2">
             {PURCHASE_UNITS.map((unit) => (
               <Pressable
@@ -396,7 +404,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
                 }`}
                 key={unit}
                 onPress={() => setPurchaseUnit(unit)}>
-                <Text className="text-base text-ink">{t(`units.${unit}`)}</Text>
+                <Text className="font-inter text-base text-ink">{t(`units.${unit}`)}</Text>
               </Pressable>
             ))}
           </View>
@@ -433,7 +441,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
 
         {liveUnitCost ? (
           <View className="rounded-xl border border-line bg-surface px-4 py-3">
-            <Text className="text-base font-semibold text-ink">
+            <Text className="text-base font-inter-semibold text-ink">
               {unitCostLabel}: {formatCurrency(liveUnitCost, currency, locale)}
             </Text>
           </View>
@@ -452,7 +460,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
               }
             }}
             className="min-h-12 flex-row items-center justify-between">
-            <Text className="text-base font-semibold text-ink">{t('ingredients.moreOptions')}</Text>
+            <Text className="text-base font-inter-semibold text-ink">{t('ingredients.moreOptions')}</Text>
             <SymbolView
               name={
                 isMoreOptionsOpen
@@ -476,7 +484,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
               />
               {!isCreate ? (
                 <View className="gap-2">
-                  <Text className="text-base font-semibold text-ink">
+                  <Text className="text-base font-inter-semibold text-ink">
                     {t('ingredients.priceHistory')}
                   </Text>
                   {historyError ? (
@@ -485,7 +493,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
                       accessibilityLabel={t('ingredients.retry')}
                       onPress={() => void loadPriceHistory()}
                       className="min-h-12 justify-center">
-                      <Text accessibilityRole="alert" className="text-sm text-bad">
+                      <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
                         {t('ingredients.historyRetry')}
                       </Text>
                     </Pressable>

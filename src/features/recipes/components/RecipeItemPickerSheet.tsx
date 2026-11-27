@@ -304,7 +304,11 @@ export function RecipeItemPickerSheet({
 
           {isCreatingPackaging ? (
             <ScrollView
-              contentContainerClassName="gap-4 px-4 py-4"
+              contentContainerStyle={{
+                gap: 16,
+                paddingHorizontal: 16,
+                paddingVertical: 16,
+              }}
               keyboardShouldPersistTaps="handled">
               <TextField
                 label={t('recipes.packagingName')}
@@ -371,7 +375,10 @@ export function RecipeItemPickerSheet({
                   className="min-h-12 flex-1 p-0 font-inter text-base text-ink"
                 />
               </View>
-              <ScrollView className="max-h-56 px-4" keyboardShouldPersistTaps="handled">
+              <ScrollView
+                className="max-h-56"
+                contentContainerStyle={{ paddingHorizontal: 16 }}
+                keyboardShouldPersistTaps="handled">
                 {visibleOptions.length === 0 ? (
                   <Text className="font-inter py-4 text-base text-muted">
                     {kind === 'ingredient'
@@ -442,7 +449,7 @@ export function RecipeItemPickerSheet({
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
-                      contentContainerClassName="items-center gap-2">
+                      contentContainerStyle={{ alignItems: 'center', gap: 8 }}>
                       {selected.units.map((availableUnit) => (
                         <Pressable
                           accessibilityRole="button"

@@ -42,14 +42,14 @@ export function IngredientConversionEditor({
   return (
     <View className="gap-4">
       <View>
-        <Text className="text-base font-semibold text-ink">
+        <Text className="text-base font-inter-semibold text-ink">
           {t('ingredients.conversions')}
         </Text>
-        <Text className="mt-1 text-sm text-muted">{t('ingredients.conversionHelp')}</Text>
+        <Text className="mt-1 font-inter text-sm text-muted">{t('ingredients.conversionHelp')}</Text>
       </View>
       {conversions.map((conversion, index) => (
         <View className="gap-3 border-b border-line pb-4" key={`${index}-${conversion.fromUnit}`}>
-          <Text className="text-sm font-semibold text-ink">
+          <Text className="text-sm font-inter-semibold text-ink">
             {t('ingredients.conversionUnit')}
           </Text>
           <View className="flex-row flex-wrap gap-2">
@@ -67,7 +67,7 @@ export function IngredientConversionEditor({
                 }`}
                 key={unit}
                 onPress={() => updateConversion(index, { fromUnit: unit })}>
-                <Text className="text-base text-ink">{t(`units.${unit}`)}</Text>
+                <Text className="font-inter text-base text-ink">{t(`units.${unit}`)}</Text>
               </Pressable>
             ))}
           </View>
@@ -94,10 +94,10 @@ export function IngredientConversionEditor({
               accessibilityLabel={t('ingredients.deleteConversion')}
               onPress={() => onChange(conversions.filter((_, rowIndex) => rowIndex !== index))}
               className="mb-1 min-h-12 min-w-12 items-center justify-center rounded-xl border border-line bg-surface">
-              <Text className="text-base font-semibold text-ink">−</Text>
+              <Text className="text-base font-inter-semibold text-ink">−</Text>
             </Pressable>
           </View>
-          <Text className="text-sm font-semibold text-ink">{t('ingredients.baseUnit')}</Text>
+          <Text className="text-sm font-inter-semibold text-ink">{t('ingredients.baseUnit')}</Text>
           <View className="flex-row gap-2">
             {BASE_UNITS.map((unit) => (
               <Pressable
@@ -113,14 +113,14 @@ export function IngredientConversionEditor({
                 }`}
                 key={unit}
                 onPress={() => updateConversion(index, { baseUnit: unit })}>
-                <Text className="text-base text-ink">{t(`units.${unit}`)}</Text>
+                <Text className="font-inter text-base text-ink">{t(`units.${unit}`)}</Text>
               </Pressable>
             ))}
           </View>
         </View>
       ))}
       {error ? (
-        <Text accessibilityRole="alert" className="text-sm text-bad">
+        <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
           {error}
         </Text>
       ) : null}
@@ -134,7 +134,7 @@ export function IngredientConversionEditor({
           ])
         }
         className="min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4">
-        <Text className="text-base font-semibold text-ink">{t('ingredients.addConversion')}</Text>
+        <Text className="text-base font-inter-semibold text-ink">{t('ingredients.addConversion')}</Text>
       </Pressable>
     </View>
   );
