@@ -1,6 +1,8 @@
 import Slider from '@react-native-community/slider';
 import { Decimal } from 'decimal.js';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import type { ComponentProps } from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -81,6 +83,55 @@ function getPriceRange(
   };
 }
 
+type PricingMarginStatus = 'good' | 'close' | 'low';
+
+const marginStatusStyles = {
+  good: {
+    color: Colors.light.good,
+    icon: { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' },
+  },
+  close: {
+    color: Colors.light.warn,
+    icon: { ios: 'minus.circle.fill', android: 'remove_circle', web: 'remove_circle' },
+  },
+  low: {
+    color: Colors.light.bad,
+    icon: { ios: 'arrow.down.circle.fill', android: 'arrow_downward', web: 'arrow_downward' },
+  },
+} satisfies Record<
+  PricingMarginStatus,
+  { color: string; icon: ComponentProps<typeof SymbolView>['name'] }
+>;
+
+function PricingHeader({
+  title,
+  backLabel,
+  onBack,
+}: {
+  title: string;
+  backLabel: string;
+  onBack: () => void;
+}) {
+  return (
+    <View className="flex-row items-center gap-3 border-b border-line bg-surface px-4 py-3">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={backLabel}
+        onPress={onBack}
+        className="h-12 w-12 items-center justify-center rounded-xl border border-line bg-bg">
+        <SymbolView
+          name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+          tintColor={Colors.light.tabIconDefault}
+          size={22}
+        />
+      </Pressable>
+      <Text accessibilityRole="header" className="font-inter-extrabold text-[22px] text-ink">
+        {title}
+      </Text>
+    </View>
+  );
+}
+
 export default function PriceWhatIfScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const sqlite = useSQLiteContext();
@@ -148,6 +199,13 @@ export default function PriceWhatIfScreen() {
     }, [loadData]),
   );
 
+  const header = (
+    <PricingHeader
+      title={t('pricing.title')}
+      backLabel={t('pricing.back')}
+      onBack={() => router.back()}
+    />
+  );
   const settings = data?.settings;
   const locale = settings?.locale ?? 'en-US';
   const currency = settings?.currencyCode ?? 'USD';
@@ -268,16 +326,30 @@ export default function PriceWhatIfScreen() {
   };
 
   if (isLoading && !data) {
-    return <SafeAreaView edges={['top']} className="flex-1 bg-bg" />;
+    return (
+      <SafeAreaView edges={['top']} className="flex-1 bg-surface">
+        {header}
+        <View className="flex-1 bg-bg">
+          <Text className="py-8 text-center font-inter text-[15px] text-muted">
+            {t('dashboard.loading')}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (loadError || !data) {
     return (
-      <SafeAreaView edges={['top']} className="flex-1 justify-center gap-3 bg-bg px-4">
-        <Text accessibilityRole="alert" className="text-base text-bad">
-          {loadError || t('pricing.loadError')}
-        </Text>
-        <Button label={t('pricing.retry')} onPress={() => void loadData()} />
+      <SafeAreaView edges={['top']} className="flex-1 bg-surface">
+        {header}
+        <View className="flex-1 justify-center gap-3 bg-bg px-4">
+          <View className="gap-3 rounded-2xl border border-line bg-badSoft p-4">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
+              {loadError || t('pricing.loadError')}
+            </Text>
+            <Button label={t('pricing.retry')} onPress={() => void loadData()} />
+          </View>
+        </View>
       </SafeAreaView>
     );
   }
@@ -291,22 +363,25 @@ export default function PriceWhatIfScreen() {
     : minorUnitsAsDecimal(priceMinor, fractionDigits);
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
+    <SafeAreaView edges={['top']} className="flex-1 bg-surface">
+      {header}
       <ScrollView
-        className="flex-1"
-        contentContainerClassName="gap-5 px-4 pb-6 pt-2"
+        className="flex-1 bg-bg"
+        contentContainerClassName="gap-4 px-4 pb-6 pt-4"
         keyboardShouldPersistTaps="handled">
-        <View className="gap-1">
-          <Text className="text-xl font-semibold text-ink">{t('pricing.title')}</Text>
-          <Text className="text-base text-muted">{data.recipe.name}</Text>
-        </View>
+        <Text className="font-inter-extrabold text-[20px] leading-[26px] text-ink">
+          {data.recipe.name}
+        </Text>
 
-        <View className="gap-2">
-          <Text className="text-base font-semibold text-ink">
+        <View className="gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+          <Text className="font-inter-semibold text-[15px] text-ink">
             {t('pricing.salesChannel')}
           </Text>
           {data.channels.length > 0 ? (
-            <View className="flex-row flex-wrap gap-2">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-2">
               {data.channels.map((item) => (
                 <Pressable
                   accessibilityRole="button"
@@ -314,23 +389,30 @@ export default function PriceWhatIfScreen() {
                   accessibilityLabel={t('pricing.selectChannel', { name: item.name })}
                   onPress={() => selectChannel(item)}
                   key={item.id}
-                  className={`min-h-12 items-center justify-center rounded-full border px-4 ${
+                  className={`min-h-11 items-center justify-center rounded-full border px-4 ${
                     item.id === channelId
-                      ? 'border-brand bg-surface'
-                      : 'border-line bg-surface'
+                      ? 'border-brand bg-brand'
+                      : 'border-line bg-bg'
                   }`}>
-                  <Text className="text-base text-ink">{item.name}</Text>
+                  <Text
+                    className={`font-inter-semibold text-[14px] ${
+                      item.id === channelId ? 'text-white' : 'text-ink'
+                    }`}>
+                    {item.name}
+                  </Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
           ) : (
-            <Text className="text-base text-muted">{t('pricing.noChannels')}</Text>
+            <Text className="font-inter text-[14px] leading-[20px] text-muted">
+              {t('pricing.noChannels')}
+            </Text>
           )}
         </View>
 
-        <View className="gap-2 rounded-xl border border-line bg-surface p-4">
-          <Text className="text-sm text-muted">{t('pricing.sellingPrice')}</Text>
-          <Text className="text-2xl font-semibold text-ink">
+        <View className="gap-2 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+          <Text className="font-inter-semibold text-[14px] text-muted">{t('pricing.sellingPrice')}</Text>
+          <Text className="font-inter-extrabold text-[26px] text-ink">
             {formatCurrency(currentPrice, currency, locale)}
           </Text>
           {range && priceMinor !== null ? (
@@ -368,14 +450,14 @@ export default function PriceWhatIfScreen() {
           ) : null}
           {range ? (
             <View className="flex-row justify-between">
-              <Text className="text-sm text-muted">
+              <Text className="font-inter text-[13px] text-muted">
                 {formatCurrency(
                   minorUnitsAsDecimal(range.minimumValue, fractionDigits),
                   currency,
                   locale,
                 )}
               </Text>
-              <Text className="text-sm text-muted">
+              <Text className="font-inter text-[13px] text-muted">
                 {formatCurrency(
                   minorUnitsAsDecimal(range.maximumValue, fractionDigits),
                   currency,
@@ -387,27 +469,27 @@ export default function PriceWhatIfScreen() {
         </View>
 
         {channel ? (
-          <View className="gap-3 rounded-xl border border-line bg-surface p-4">
+          <View className="gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
             <View className="flex-row justify-between gap-3">
-              <Text className="flex-1 text-base text-muted">{t('pricing.costPerPlate')}</Text>
-              <Text className="text-base font-semibold text-ink">
+              <Text className="flex-1 font-inter text-[14px] text-muted">{t('pricing.costPerPlate')}</Text>
+              <Text className="font-inter-semibold text-[15px] text-ink">
                 {formatCurrency(data.cost.costPerPortion, currency, locale)}
               </Text>
             </View>
             <View className="flex-row justify-between gap-3">
-              <Text className="flex-1 text-base text-muted">{t('pricing.channelFees')}</Text>
-              <Text className="text-base font-semibold text-ink">
+              <Text className="flex-1 font-inter text-[14px] text-muted">{t('pricing.channelFees')}</Text>
+              <Text className="font-inter-semibold text-[15px] text-ink">
                 {pricing
                   ? formatCurrency(pricing.fees, currency, locale)
                   : formatCurrency(new Decimal(0), currency, locale)}
               </Text>
             </View>
             <View className="flex-row justify-between gap-3 border-t border-line pt-3">
-              <Text className="flex-1 text-base font-semibold text-ink">
+              <Text className="flex-1 font-inter-semibold text-[15px] text-ink">
                 {t('pricing.profitPerPlate')}
               </Text>
               <Text
-                className={`text-base font-semibold ${
+                className={`font-inter-bold text-[15px] ${
                   pricing && pricing.profit.isNegative() ? 'text-bad' : 'text-ink'
                 }`}>
                 {pricing
@@ -416,32 +498,39 @@ export default function PriceWhatIfScreen() {
               </Text>
             </View>
             {pricing && marginStatus ? (
-              <View className="flex-row justify-between gap-3">
-                <Text className="flex-1 text-base text-muted">{t('pricing.margin')}</Text>
-                <Text
+              <View className="flex-row items-center justify-between gap-3">
+                <Text className="flex-1 font-inter text-[14px] text-muted">{t('pricing.margin')}</Text>
+                <View
                   accessibilityLabel={t('pricing.marginStatus', {
                     margin: new Intl.NumberFormat(locale, {
                       maximumFractionDigits: 1,
                     }).format(pricing.marginPct.toNumber()),
                     status: t(`dashboard.status.${marginStatus}`),
                   })}
-                  className={`text-base font-semibold ${
-                    marginStatus === 'good'
-                      ? 'text-good'
-                      : marginStatus === 'close'
-                        ? 'text-warn'
-                        : 'text-bad'
-                  }`}>
-                  {new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(
-                    pricing.marginPct.toNumber(),
-                  )}
-                  {'% · '}
-                  {t(`dashboard.status.${marginStatus}`)}
-                </Text>
+                  className="flex-row items-center gap-1 rounded-full bg-bg px-3 py-2">
+                  <SymbolView
+                    name={marginStatusStyles[marginStatus].icon}
+                    tintColor={marginStatusStyles[marginStatus].color}
+                    size={18}
+                  />
+                  <Text
+                    style={{ color: marginStatusStyles[marginStatus].color }}
+                    className="font-inter-semibold text-[12px]">
+                    {t(`dashboard.status.${marginStatus}`)}
+                  </Text>
+                  <Text
+                    style={{ color: marginStatusStyles[marginStatus].color }}
+                    className="ms-1 font-inter-bold text-[15px]">
+                    {new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(
+                      pricing.marginPct.toNumber(),
+                    )}
+                    %
+                  </Text>
+                </View>
               </View>
             ) : null}
             {calculationFailed ? (
-              <Text accessibilityRole="alert" className="text-sm text-bad">
+              <Text accessibilityRole="alert" className="font-inter text-[14px] text-bad">
                 {t('pricing.calculationError')}
               </Text>
             ) : null}
@@ -462,32 +551,36 @@ export default function PriceWhatIfScreen() {
             onPress={useSuggestedPrice}
           />
           {suggestedPrice?.kind === 'suggested' ? (
-            <Text className="text-center text-base font-semibold text-ink">
+            <Text className="text-center font-inter-semibold text-[15px] text-ink">
               {t('pricing.suggestedPriceValue', { price: suggestedPriceLabel })}
             </Text>
           ) : suggestedPrice?.kind === 'impossible' ? (
-            <Text accessibilityRole="alert" className="text-base text-bad">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
               {t('pricing.impossibleTarget', {
                 channel: channel?.name ?? '',
                 target: data.settings.targetMarginPct,
               })}
             </Text>
           ) : suggestedPrice?.kind === 'unrepresentable' ? (
-            <Text accessibilityRole="alert" className="text-base text-bad">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
               {t('pricing.unrepresentable')}
             </Text>
           ) : null}
         </View>
 
         {screenError ? (
-          <Text accessibilityRole="alert" className="text-base text-bad">
-            {screenError}
-          </Text>
+          <View className="rounded-2xl border border-line bg-badSoft p-3.5">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
+              {screenError}
+            </Text>
+          </View>
         ) : null}
         {isSaved ? (
-          <Text accessibilityRole="summary" className="text-sm font-semibold text-good">
-            {t('pricing.saved')}
-          </Text>
+          <View className="rounded-2xl border border-line bg-goodSoft p-3.5">
+            <Text accessibilityRole="summary" className="font-inter-semibold text-[14px] text-good">
+              {t('pricing.saved')}
+            </Text>
+          </View>
         ) : null}
       </ScrollView>
 

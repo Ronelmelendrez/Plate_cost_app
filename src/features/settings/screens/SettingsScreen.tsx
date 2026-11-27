@@ -1,5 +1,6 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -28,6 +29,54 @@ import {
 } from '@features/settings/data/settingsRepository';
 import { ChannelSettingsRow } from '@features/settings/components/ChannelSettingsRow';
 import { Button, TextField } from '@shared/ui';
+import { HERO_GRADIENT, HERO_TOP } from '@shared/theme';
+
+function SectionCard({
+  title,
+  hint,
+  onPress,
+  expanded,
+  accessory,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  onPress?: () => void;
+  expanded?: boolean;
+  accessory?: ReactNode;
+  children?: ReactNode;
+}) {
+  const header = (
+    <View className="min-w-0 flex-1 gap-1">
+      <Text className="font-inter-extrabold text-[17px] leading-[22px] text-ink">{title}</Text>
+      {hint ? (
+        <Text className="font-inter text-[13px] leading-[18px] text-muted">{hint}</Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View className="gap-4 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+      {onPress ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={title}
+          onPress={onPress}
+          className="min-h-12 flex-row items-center justify-between gap-3">
+          {header}
+          {accessory}
+        </Pressable>
+      ) : (
+        <View className="flex-row items-center justify-between gap-3">
+          {header}
+          {accessory}
+        </View>
+      )}
+      {children}
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const sqlite = useSQLiteContext();
@@ -212,8 +261,32 @@ export default function SettingsScreen() {
     }
   };
 
+  const hero = (
+    <LinearGradient
+      colors={HERO_GRADIENT}
+      style={{ paddingHorizontal: 16, paddingBottom: 18, paddingTop: 8 }}>
+      <Text
+        accessibilityRole="header"
+        className="font-inter-extrabold text-[30px] leading-[36px] text-white">
+        {t('settings.title')}
+      </Text>
+      <Text className="mt-1 font-inter text-[13px] leading-[18px] text-white">
+        {t('settings.subtitle')}
+      </Text>
+    </LinearGradient>
+  );
+
   if (isLoading && !settings) {
-    return <SafeAreaView edges={['top']} className="flex-1 bg-bg" />;
+    return (
+      <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: HERO_TOP }}>
+        {hero}
+        <View className="flex-1 bg-bg">
+          <Text className="px-4 py-6 text-center font-inter text-[15px] text-muted">
+            {t('settings.loading')}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   const currencyForRounding =
@@ -225,38 +298,48 @@ export default function SettingsScreen() {
     : [];
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
-      <View className="px-4 pb-3 pt-1">
-        <Text className="text-xl font-semibold text-ink">{t('settings.title')}</Text>
-      </View>
+    <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: HERO_TOP }}>
+      {hero}
       {loadError ? (
-        <View className="flex-1 justify-center gap-3 px-4">
-          <Text accessibilityRole="alert" className="text-base text-bad">
-            {loadError}
-          </Text>
-          <Button label={t('settings.retry')} onPress={() => void loadSettings()} />
+        <View className="flex-1 bg-bg">
+          <View className="m-4 gap-3 rounded-2xl border border-line bg-badSoft p-4">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
+              {loadError}
+            </Text>
+            <Button label={t('settings.retry')} onPress={() => void loadSettings()} />
+          </View>
         </View>
       ) : settings ? (
         <>
           <ScrollView
-            className="flex-1"
-            contentContainerClassName="gap-6 px-4 pb-6"
+            className="flex-1 bg-bg"
+            contentContainerStyle={{
+              gap: 16,
+              paddingHorizontal: 16,
+              paddingTop: 16,
+              paddingBottom: 24,
+            }}
             keyboardShouldPersistTaps="handled">
             {formError ? (
-              <Text accessibilityRole="alert" className="text-base text-bad">
-                {formError}
-              </Text>
+              <View className="rounded-2xl border border-line bg-badSoft p-3.5">
+                <Text
+                  accessibilityRole="alert"
+                  className="font-inter text-[14px] leading-[20px] text-bad">
+                  {formError}
+                </Text>
+              </View>
             ) : null}
             {isSaved ? (
-              <Text accessibilityRole="summary" className="text-sm font-semibold text-good">
-                {t('settings.saved')}
-              </Text>
+              <View className="rounded-2xl border border-line bg-goodSoft p-3.5">
+                <Text
+                  accessibilityRole="summary"
+                  className="font-inter-semibold text-[14px] text-good">
+                  {t('settings.saved')}
+                </Text>
+              </View>
             ) : null}
 
-            <View className="gap-4">
-              <Text className="text-base font-semibold text-ink">
-                {t('settings.costing')}
-              </Text>
+            <SectionCard title={t('settings.costing')}>
               <TextField
                 label={t('settings.wasteBuffer')}
                 value={settings.wastePct}
@@ -285,12 +368,9 @@ export default function SettingsScreen() {
                 keyboardType="decimal-pad"
                 suffix="%"
               />
-            </View>
+            </SectionCard>
 
-            <View className="gap-4 border-t border-line pt-4">
-              <Text className="text-base font-semibold text-ink">
-                {t('settings.currency')}
-              </Text>
+            <SectionCard title={t('settings.currency')}>
               <TextField
                 label={t('settings.currencyCode')}
                 value={settings.currencyCode}
@@ -299,42 +379,51 @@ export default function SettingsScreen() {
                 accessibilityLabel={t('settings.currencyCode')}
               />
               {settings.currencyCode !== savedCurrencyCode ? (
-                <Text className="text-sm text-muted">{t('settings.currencyWarning')}</Text>
+                <Text className="font-inter text-[13px] leading-[18px] text-muted">
+                  {t('settings.currencyWarning')}
+                </Text>
               ) : null}
-              <Text className="text-sm font-semibold text-ink">{t('settings.unitSystem')}</Text>
-              <View className="flex-row gap-2">
-                {(['metric', 'us'] as const).map((unitSystem) => (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: settings.unitSystem === unitSystem }}
-                    accessibilityLabel={t(`settings.${unitSystem}`)}
-                    onPress={() => updateSettings({ unitSystem })}
-                    key={unitSystem}
-                    className={`min-h-12 flex-1 items-center justify-center rounded-xl border px-3 ${
-                      settings.unitSystem === unitSystem
-                        ? 'border-ink bg-surface'
-                        : 'border-line bg-surface'
-                    }`}>
-                    <Text className="text-base text-ink">{t(`settings.${unitSystem}`)}</Text>
-                  </Pressable>
-                ))}
+              <View className="gap-2">
+                <Text className="font-inter-semibold text-[15px] text-ink">
+                  {t('settings.unitSystem')}
+                </Text>
+                <View className="flex-row gap-2">
+                  {(['metric', 'us'] as const).map((unitSystem) => {
+                    const selected = settings.unitSystem === unitSystem;
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={t(`settings.${unitSystem}`)}
+                        onPress={() => updateSettings({ unitSystem })}
+                        key={unitSystem}
+                        className={`min-h-12 flex-1 items-center justify-center rounded-2xl border px-3 ${
+                          selected ? 'border-brand bg-brandSoft' : 'border-line bg-bg'
+                        }`}>
+                        <Text
+                          className={`font-inter-semibold text-[15px] ${
+                            selected ? 'text-brand' : 'text-ink'
+                          }`}>
+                          {t(`settings.${unitSystem}`)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
-            </View>
+            </SectionCard>
 
-            <View className="border-t border-line pt-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: isTaxOpen }}
-                accessibilityLabel={t('settings.tax')}
-                onPress={() => setIsTaxOpen((open) => !open)}
-                className="min-h-12 flex-row items-center justify-between">
-                <Text className="text-base font-semibold text-ink">{t('settings.tax')}</Text>
-                <Text className="text-sm font-semibold text-brand">
+            <SectionCard
+              title={t('settings.tax')}
+              onPress={() => setIsTaxOpen((open) => !open)}
+              expanded={isTaxOpen}
+              accessory={
+                <Text className="font-inter-semibold text-[14px] text-brand">
                   {isTaxOpen ? t('settings.closeSection') : t('settings.edit')}
                 </Text>
-              </Pressable>
+              }>
               {isTaxOpen ? (
-                <View className="gap-4 pb-2 pt-3">
+                <View className="gap-4">
                   <Pressable
                     accessibilityRole="switch"
                     accessibilityState={{ checked: settings.pricesIncludeTax }}
@@ -342,11 +431,11 @@ export default function SettingsScreen() {
                     onPress={() =>
                       updateSettings({ pricesIncludeTax: !settings.pricesIncludeTax })
                     }
-                    className="min-h-12 flex-row items-center justify-between">
-                    <Text className="flex-1 text-base text-ink">
+                    className="min-h-12 flex-row items-center justify-between gap-3">
+                    <Text className="min-w-0 flex-1 font-inter text-[15px] text-ink">
                       {t('settings.pricesIncludeTax')}
                     </Text>
-                    <Text className="ms-3 text-base font-semibold text-brand">
+                    <Text className="font-inter-semibold text-[15px] text-brand">
                       {settings.pricesIncludeTax ? t('settings.on') : t('settings.off')}
                     </Text>
                   </Pressable>
@@ -366,24 +455,19 @@ export default function SettingsScreen() {
                   ) : null}
                 </View>
               ) : null}
-            </View>
+            </SectionCard>
 
-            <View className="border-t border-line pt-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: isMoreOptionsOpen }}
-                accessibilityLabel={t('settings.moreOptions')}
-                onPress={() => setIsMoreOptionsOpen((open) => !open)}
-                className="min-h-12 flex-row items-center justify-between">
-                <Text className="text-base font-semibold text-ink">
-                  {t('settings.moreOptions')}
-                </Text>
-                <Text className="text-sm font-semibold text-brand">
+            <SectionCard
+              title={t('settings.moreOptions')}
+              onPress={() => setIsMoreOptionsOpen((open) => !open)}
+              expanded={isMoreOptionsOpen}
+              accessory={
+                <Text className="font-inter-semibold text-[14px] text-brand">
                   {isMoreOptionsOpen ? t('settings.closeSection') : t('settings.edit')}
                 </Text>
-              </Pressable>
+              }>
               {isMoreOptionsOpen ? (
-                <View className="gap-4 pb-2 pt-3">
+                <View className="gap-4">
                   <TextField
                     label={t('settings.cupSize')}
                     value={settings.cupMl}
@@ -412,29 +496,31 @@ export default function SettingsScreen() {
                     suffix="ml"
                   />
                   <View className="gap-2">
-                    <Text className="text-base font-semibold text-ink">
+                    <Text className="font-inter-semibold text-[15px] text-ink">
                       {t('settings.suggestedPriceRounding')}
                     </Text>
                     <View className="flex-row flex-wrap gap-2">
-                      {roundingRules.map((roundingRule) => (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityState={{
-                            selected: settings.roundingRule === roundingRule,
-                          }}
-                          accessibilityLabel={t(`settings.roundingRules.${roundingRule}`)}
-                          onPress={() => updateSettings({ roundingRule })}
-                          key={roundingRule}
-                          className={`min-h-12 items-center justify-center rounded-xl border px-3 ${
-                            settings.roundingRule === roundingRule
-                              ? 'border-brand bg-surface'
-                              : 'border-line bg-surface'
-                          }`}>
-                          <Text className="text-sm text-ink">
-                            {t(`settings.roundingRules.${roundingRule}`)}
-                          </Text>
-                        </Pressable>
-                      ))}
+                      {roundingRules.map((roundingRule) => {
+                        const selected = settings.roundingRule === roundingRule;
+                        return (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={t(`settings.roundingRules.${roundingRule}`)}
+                            onPress={() => updateSettings({ roundingRule })}
+                            key={roundingRule}
+                            className={`min-h-12 items-center justify-center rounded-2xl border px-3 ${
+                              selected ? 'border-brand bg-brandSoft' : 'border-line bg-bg'
+                            }`}>
+                            <Text
+                              className={`font-inter-semibold text-[14px] ${
+                                selected ? 'text-brand' : 'text-ink'
+                              }`}>
+                              {t(`settings.roundingRules.${roundingRule}`)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   </View>
                   <Pressable
@@ -446,11 +532,11 @@ export default function SettingsScreen() {
                         feesOnTaxIncludedPrice: !settings.feesOnTaxIncludedPrice,
                       })
                     }
-                    className="min-h-12 flex-row items-center justify-between">
-                    <Text className="flex-1 text-base text-ink">
+                    className="min-h-12 flex-row items-center justify-between gap-3">
+                    <Text className="min-w-0 flex-1 font-inter text-[15px] text-ink">
                       {t('settings.feesOnTaxIncludedPrice')}
                     </Text>
-                    <Text className="ms-3 text-base font-semibold text-brand">
+                    <Text className="font-inter-semibold text-[15px] text-brand">
                       {settings.feesOnTaxIncludedPrice
                         ? t('settings.grossPrice')
                         : t('settings.netPrice')}
@@ -458,15 +544,9 @@ export default function SettingsScreen() {
                   </Pressable>
                 </View>
               ) : null}
-            </View>
+            </SectionCard>
 
-            <View className="border-t border-line pt-4">
-              <Text className="mb-2 text-base font-semibold text-ink">
-                {t('settings.salesChannels')}
-              </Text>
-              <Text className="mb-2 text-sm text-muted">
-                {t('settings.channelHelp')}
-              </Text>
+            <SectionCard title={t('settings.salesChannels')} hint={t('settings.channelHelp')}>
               {channels.map((channel) => (
                 <ChannelSettingsRow
                   channel={channel}
@@ -485,28 +565,21 @@ export default function SettingsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('settings.addChannel')}
                 onPress={addChannel}
-                className="mt-2 min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4">
-                <Text className="text-base font-semibold text-ink">
+                className="min-h-12 items-center justify-center rounded-2xl border border-line bg-bg px-4">
+                <Text className="font-inter-semibold text-[15px] text-ink">
                   {t('settings.addChannel')}
                 </Text>
               </Pressable>
-            </View>
-            <View className="gap-3 border-t border-line pt-4">
-              <View className="gap-1">
-                <Text className="text-base font-semibold text-ink">
-                  {t('settings.backup')}
-                </Text>
-                <Text className="text-sm leading-6 text-muted">
-                  {t('settings.backupHelp')}
-                </Text>
-              </View>
+            </SectionCard>
+
+            <SectionCard title={t('settings.backup')} hint={t('settings.backupHelp')}>
               {backupError ? (
-                <Text accessibilityRole="alert" className="text-sm text-bad">
+                <Text accessibilityRole="alert" className="font-inter text-[14px] text-bad">
                   {backupError}
                 </Text>
               ) : null}
               {backupMessage ? (
-                <Text accessibilityRole="summary" className="text-sm font-semibold text-good">
+                <Text accessibilityRole="summary" className="font-inter-semibold text-[14px] text-good">
                   {backupMessage}
                 </Text>
               ) : null}
@@ -522,8 +595,11 @@ export default function SettingsScreen() {
                 onPress={() => void handleBackupImport()}
                 disabled={!isReady || isBackupBusy}
               />
-            </View>
-            <Text className="text-sm leading-6 text-muted">{t('settings.legalNote')}</Text>
+            </SectionCard>
+
+            <Text className="font-inter text-[13px] leading-[18px] text-muted">
+              {t('settings.legalNote')}
+            </Text>
           </ScrollView>
 
           <View

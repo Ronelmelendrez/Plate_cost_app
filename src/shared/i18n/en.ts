@@ -204,6 +204,8 @@ export const en = {
   },
   settings: {
     title: 'Settings',
+    subtitle: 'Currency, tax, sales channels, and backups.',
+    loading: 'Loading settings…',
     costing: 'Costs',
     wasteBuffer: 'Waste buffer',
     wasteHelp: 'Spoilage and mistakes. This is separate from usable yield.',
@@ -275,6 +277,7 @@ export const en = {
   },
   pricing: {
     title: 'What-if price',
+    back: 'Back to recipe',
     salesChannel: 'Sales channel',
     selectChannel: 'Show prices for {{name}}',
     noChannels: 'Add a sales channel in Settings to use price scenarios.',

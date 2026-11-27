@@ -30,18 +30,18 @@ export function ChannelSettingsRow({
         accessibilityLabel={t('settings.editChannel', { name: channel.name || t('settings.unnamedChannel') })}
         onPress={onToggle}
         className="min-h-16 flex-row items-center justify-between py-3">
-        <View className="flex-1 gap-1">
-          <Text className="text-base font-semibold text-ink">
+        <View className="min-w-0 flex-1 gap-1">
+          <Text className="font-inter-semibold text-[15px] leading-[20px] text-ink">
             {channel.name || t('settings.unnamedChannel')}
           </Text>
-          <Text className="text-sm text-muted">
+          <Text className="font-inter text-[13px] leading-[18px] text-muted">
             {t('settings.channelFeesSummary', {
               commission: channel.commissionPct,
               payment: channel.paymentFeePct,
             })}
           </Text>
         </View>
-        <Text className="ms-3 text-base font-semibold text-brand">
+        <Text className="shrink-0 font-inter-semibold text-[14px] text-brand">
           {expanded ? t('settings.closeSection') : t('settings.edit')}
         </Text>
       </Pressable>
