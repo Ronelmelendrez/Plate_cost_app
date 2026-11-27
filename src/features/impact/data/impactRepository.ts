@@ -5,11 +5,9 @@ import { calculateRecipeCost, type RecipeCostInput } from '@core/costing/costEng
 import { currencyFractionDigits } from '@core/costing/money';
 import type { AppDatabase } from '@core/db/client';
 import { getRecipeWorkspace } from '@features/recipes/data/recipeRepository';
+import type { PriceImpactSource } from '../domain/impactSource';
 
-export type PriceImpactSource =
-  | { type: 'ingredient'; id: string }
-  | { type: 'recipe'; id: string }
-  | { type: 'packaging'; id: string };
+export type { PriceImpactSource } from '../domain/impactSource';
 
 export type PriceImpactStatus = 'good' | 'close' | 'low' | 'unpriced';
 
@@ -71,7 +69,7 @@ export async function getPriceChangeImpact(
         ? workspace.recipes.find((recipe) => recipe.id === source.id)
         : workspace.packagingItems.find((item) => item.id === source.id);
   if (!sourceRecord) {
-    throw new Error('The changed ingredient or sub-recipe could not be found.');
+    throw new Error('The changed item could not be found.');
   }
 
   const fractionDigits = currencyFractionDigits(
