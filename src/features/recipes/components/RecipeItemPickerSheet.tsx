@@ -231,16 +231,17 @@ export function RecipeItemPickerSheet({
               contentContainerStyle={{ gap: 12, paddingHorizontal: 16, paddingTop: 4 }}
               keyboardShouldPersistTaps="handled">
               <Text className="font-inter-semibold text-base text-ink">{selected.name}</Text>
-              <View className="flex-row items-end gap-3">
-                <View className="flex-1">
-                  <TextField
-                    label={t('recipes.quantity')}
-                    value={quantity}
-                    onChangeText={setQuantity}
-                    onBlur={() => setQuantity(formatDecimalInput(quantity, locale))}
-                    keyboardType="decimal-pad"
-                  />
-                </View>
+              <TextField
+                label={t('recipes.quantity')}
+                value={quantity}
+                onChangeText={setQuantity}
+                onBlur={() => setQuantity(formatDecimalInput(quantity, locale))}
+                keyboardType="decimal-pad"
+              />
+              <View className="gap-1">
+                <Text className="font-inter text-sm text-muted">
+                  {t('recipes.selectUnit')}
+                </Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -280,7 +281,7 @@ export function RecipeItemPickerSheet({
             </View>
           </View>
         ) : (
-          <View className="flex-1">
+          <View className="flex-1" style={{ minHeight: 0 }}>
             <View className="flex-row border-b border-line px-2">
               {(['ingredient', 'recipe'] as ItemKind[]).map((tabKind) => (
                 <Pressable
@@ -337,7 +338,7 @@ export function RecipeItemPickerSheet({
               }
               contentContainerStyle={{ paddingHorizontal: 16 }}
               keyboardShouldPersistTaps="handled"
-              style={{ flex: 1 }}
+              style={{ flex: 1, minHeight: 0 }}
             />
           </View>
         )}
