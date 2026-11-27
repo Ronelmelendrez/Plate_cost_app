@@ -521,7 +521,6 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
       {impactReport ? (
         <PriceChangeImpactSheet
           report={impactReport}
-          bottomInset={insets.bottom}
           onClose={() => {
             setImpactReport(null);
             router.back();

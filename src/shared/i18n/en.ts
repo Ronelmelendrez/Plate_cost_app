@@ -400,6 +400,7 @@ export const en = {
     editItem: 'Update item',
     noItems: 'Add ingredients, sub-recipes, or packaging.',
     itemSearch: 'Search items',
+    chooseAnotherItem: 'Choose a different item',
     ingredientsTab: 'Ingredients',
     subRecipesTab: 'Sub-recipes',
     packagingTab: 'Packaging',

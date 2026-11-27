@@ -1249,7 +1249,6 @@ export default function RecipeDetailScreen() {
       {impactReport ? (
         <PriceChangeImpactSheet
           report={impactReport}
-          bottomInset={insets.bottom}
           onClose={() => {
             setImpactReport(null);
             router.back();

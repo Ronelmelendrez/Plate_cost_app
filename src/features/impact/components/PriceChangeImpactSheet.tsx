@@ -6,11 +6,10 @@ import type {
   PriceChangeImpactReport,
   PriceImpactDish,
 } from '@features/impact/data/impactRepository';
-import { Button } from '@shared/ui';
+import { BottomSheet, Button } from '@shared/ui';
 
 interface PriceChangeImpactSheetProps {
   report: PriceChangeImpactReport;
-  bottomInset: number;
   onClose: () => void;
   onReview: () => void;
   onSelectDish: (recipeId: string) => void;
@@ -65,13 +64,13 @@ export function ImpactDishRow({
       }
       onPress={onPress}
       className="gap-1 border-b border-line py-3">
-      <Text className="text-base font-semibold text-ink">{dish.name}</Text>
-      <Text className="text-sm text-muted">
+      <Text className="font-inter-semibold text-base text-ink">{dish.name}</Text>
+      <Text className="font-inter text-sm text-muted">
         {t('impact.dishCost', {
           cost: formatCurrency(dish.costPerPortion, currency, locale),
         })}
       </Text>
-      <Text className={`text-sm font-semibold ${statusColor}`}>
+      <Text className={`font-inter-semibold text-sm ${statusColor}`}>
         {dish.status === 'low' ? '↓ ' : dish.status === 'good' ? '↑ ' : '• '}
         {margin
           ? t('impact.channelMargin', {
@@ -87,7 +86,6 @@ export function ImpactDishRow({
 
 export function PriceChangeImpactSheet({
   report,
-  bottomInset,
   onClose,
   onReview,
   onSelectDish,
@@ -95,37 +93,16 @@ export function PriceChangeImpactSheet({
   const { t } = useTranslation();
 
   return (
-    <View
-      className="absolute inset-0 justify-end"
-      pointerEvents="box-none"
-      style={{ zIndex: 50, elevation: 50 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t('impact.close')}
-        onPress={onClose}
-        className="absolute inset-0"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.38)' }}
-      />
-      <View
-        className="rounded-t-3xl border-t border-line bg-surface px-4 pt-5"
-        style={{ maxHeight: '80%', paddingBottom: Math.max(16, bottomInset) }}>
-        <View className="mb-3 flex-row items-start justify-between gap-3">
-          <View className="flex-1 gap-1">
-            <Text className="text-xl font-semibold text-ink">{t('impact.title')}</Text>
-            <Text className="text-sm text-muted">{report.sourceName}</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('impact.close')}
-            onPress={onClose}
-            className="min-h-12 min-w-12 items-center justify-center">
-            <Text className="text-base font-semibold text-brand">{t('impact.close')}</Text>
-          </Pressable>
-        </View>
-        <Text className="text-base font-semibold text-ink">
+    <BottomSheet
+      title={t('impact.title')}
+      subtitle={report.sourceName}
+      closeLabel={t('impact.close')}
+      onClose={onClose}>
+      <View className="px-4 pb-4 pt-3">
+        <Text className="font-inter-semibold text-base text-ink">
           {t('impact.affectedSummary', { count: report.dishes.length })}
         </Text>
-        <Text className="mb-2 text-base text-muted">
+        <Text className="mb-2 font-inter text-base text-muted">
           {t('impact.belowSummary', { count: report.belowTargetCount })}
         </Text>
         <ScrollView
@@ -142,13 +119,13 @@ export function PriceChangeImpactSheet({
             />
           ))}
           {report.dishes.length > 3 ? (
-            <Text className="py-2 text-sm text-muted">
+            <Text className="py-2 font-inter text-sm text-muted">
               {t('impact.moreDishes', { count: report.dishes.length - 3 })}
             </Text>
           ) : null}
         </ScrollView>
         <Button label={t('impact.review')} onPress={onReview} />
       </View>
-    </View>
+    </BottomSheet>
   );
 }

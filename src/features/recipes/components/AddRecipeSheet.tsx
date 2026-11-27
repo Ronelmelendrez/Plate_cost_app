@@ -1,9 +1,9 @@
 import { SymbolView } from 'expo-symbols';
 import type { ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, Text, View } from 'react-native';
 
+import { BottomSheet } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
 type RecipeType = 'dish' | 'sub-recipe';
@@ -45,67 +45,36 @@ export function AddRecipeSheet({ visible, onClose, onSelect }: AddRecipeSheetPro
   ];
 
   return (
-    <Modal
+    <BottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent>
-      <View className="flex-1 justify-end bg-black/30">
-        <SafeAreaView edges={['bottom']} className="rounded-t-3xl bg-bg">
-          <View className="items-center pb-1 pt-2.5">
-            <View className="h-1 w-10 rounded-full bg-line" />
-          </View>
-
-          <View className="gap-0.5 px-4 pb-1 pt-2">
-            <Text className="font-inter-extrabold text-[20px] leading-[26px] text-ink">
-              {t('recipes.newRecipe')}
-            </Text>
-            <Text className="font-inter text-[13px] leading-[18px] text-muted">
-              {t('recipes.addRecipeHint')}
-            </Text>
-          </View>
-
-          <View className="gap-3 px-4 pt-3">
-            {options.map((option) => (
-              <Pressable
-                key={option.type}
-                accessibilityRole="button"
-                accessibilityLabel={option.label}
-                onPress={() => onSelect(option.type)}
-                className="flex-row items-center gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
-                <View
-                  className={`h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${option.tileClassName}`}>
-                  <SymbolView name={option.icon} tintColor={option.iconColor} size={22} />
-                </View>
-                <View className="min-w-0 flex-1 gap-0.5">
-                  <Text className="font-inter-bold text-[16px] leading-[20px] text-ink">
-                    {option.label}
-                  </Text>
-                  <Text className="font-inter text-[13px] leading-[18px] text-muted">
-                    {option.hint}
-                  </Text>
-                </View>
-                <SymbolView
-                  name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-                  tintColor={Colors.light.tabIconDefault}
-                  size={18}
-                />
-              </Pressable>
-            ))}
-          </View>
-
+      title={t('recipes.newRecipe')}
+      subtitle={t('recipes.addRecipeHint')}
+      closeLabel={t('recipes.close')}
+      onClose={onClose}>
+      <View className="gap-3 px-4 py-4">
+        {options.map((option) => (
           <Pressable
+            key={option.type}
             accessibilityRole="button"
-            accessibilityLabel={t('recipes.close')}
-            onPress={onClose}
-            className="mt-2 min-h-14 items-center justify-center">
-            <Text className="font-inter-semibold text-[15px] text-muted">
-              {t('recipes.close')}
-            </Text>
+            accessibilityLabel={option.label}
+            onPress={() => onSelect(option.type)}
+            className="min-h-20 flex-row items-center gap-3 rounded-2xl border border-line bg-surface p-4">
+            <View
+              className={`h-12 w-12 shrink-0 items-center justify-center rounded-xl ${option.tileClassName}`}>
+              <SymbolView name={option.icon} tintColor={option.iconColor} size={22} />
+            </View>
+            <View className="min-w-0 flex-1 gap-0.5">
+              <Text className="font-inter-semibold text-base text-ink">{option.label}</Text>
+              <Text className="font-inter text-sm leading-5 text-muted">{option.hint}</Text>
+            </View>
+            <SymbolView
+              name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+              tintColor={Colors.light.tabIconDefault}
+              size={18}
+            />
           </Pressable>
-        </SafeAreaView>
+        ))}
       </View>
-    </Modal>
+    </BottomSheet>
   );
 }

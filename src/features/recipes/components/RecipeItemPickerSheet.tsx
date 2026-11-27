@@ -1,15 +1,14 @@
+import { FlashList } from '@shopify/flash-list';
 import { Decimal } from 'decimal.js';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Modal,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { detectCycle, type RecipeEdge } from '@core/costing/cycleCheck';
 import {
@@ -33,7 +32,7 @@ import {
 } from '@core/costing/money';
 import type { Ingredient } from '@features/ingredients/data/ingredientRepository';
 import type { PackagingItem, Recipe, RecipeItemDraft } from '@features/recipes/data/recipeRepository';
-import { Button, TextField } from '@shared/ui';
+import { BottomSheet, Button, TextField } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
 type ItemKind = RecipeItemDraft['kind'];
@@ -279,69 +278,137 @@ export function RecipeItemPickerSheet({
   };
 
   return (
-    <Modal
+    <BottomSheet
       visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent>
-      <View className="flex-1 justify-end bg-black/30">
-        <SafeAreaView edges={['bottom']} className="max-h-[90%] rounded-t-2xl bg-bg">
-          <View className="flex-row items-center justify-between border-b border-line px-4 py-3">
-            <Text className="text-xl font-inter-semibold text-ink">
-              {isCreatingPackaging ? t('recipes.createPackaging') : t('recipes.addItem')}
+      title={isCreatingPackaging ? t('recipes.createPackaging') : t('recipes.addItem')}
+      closeLabel={t('recipes.close')}
+      onClose={onClose}
+      size="half">
+      {isCreatingPackaging ? (
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{
+            gap: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 16,
+          }}
+          keyboardShouldPersistTaps="handled">
+          <TextField
+            label={t('recipes.packagingName')}
+            value={packagingName}
+            onChangeText={setPackagingName}
+          />
+          <TextField
+            label={t('recipes.packagingCost')}
+            value={packagingPrice}
+            onChangeText={setPackagingPrice}
+            onBlur={() => setPackagingPrice(formatDecimalInput(packagingPrice, locale))}
+            keyboardType="decimal-pad"
+            prefix={priceAffixes.prefix}
+            suffix={priceAffixes.suffix}
+          />
+          {error ? (
+            <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
+              {error}
             </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('recipes.close')}
-              onPress={onClose}
-              className="min-h-12 min-w-12 items-center justify-center">
-              <Text className="font-inter text-base text-ink">{t('recipes.close')}</Text>
-            </Pressable>
-          </View>
-
-          {isCreatingPackaging ? (
-            <ScrollView
-              contentContainerStyle={{
-                gap: 16,
-                paddingHorizontal: 16,
-                paddingVertical: 16,
-              }}
-              keyboardShouldPersistTaps="handled">
-              <TextField
-                label={t('recipes.packagingName')}
-                value={packagingName}
-                onChangeText={setPackagingName}
-              />
-              <TextField
-                label={t('recipes.packagingCost')}
-                value={packagingPrice}
-                onChangeText={setPackagingPrice}
-                onBlur={() => setPackagingPrice(formatDecimalInput(packagingPrice, locale))}
-                keyboardType="decimal-pad"
-                prefix={priceAffixes.prefix}
-                suffix={priceAffixes.suffix}
-              />
-              {error ? (
-                <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
-                  {error}
-                </Text>
-              ) : null}
-              <Button
-                label={t('recipes.savePackaging')}
-                onPress={() => void handleCreatePackaging()}
-                disabled={isSavingPackaging}
-              />
+          ) : null}
+          <Button
+            label={t('recipes.savePackaging')}
+            onPress={() => void handleCreatePackaging()}
+            disabled={isSavingPackaging}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('recipes.close')}
+            onPress={() => setIsCreatingPackaging(false)}
+            className="min-h-12 items-center justify-center">
+            <Text className="font-inter text-base text-muted">{t('recipes.close')}</Text>
+          </Pressable>
+        </ScrollView>
+      ) : (
+        <View className="flex-1">
+          {selected ? (
+            <View className="flex-1">
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t('recipes.close')}
-                onPress={() => setIsCreatingPackaging(false)}
-                className="min-h-12 items-center justify-center">
-                <Text className="font-inter text-base text-muted">{t('recipes.close')}</Text>
+                accessibilityLabel={t('recipes.chooseAnotherItem')}
+                onPress={() => {
+                  setSelected(null);
+                  setError('');
+                }}
+                className="min-h-12 justify-center px-4">
+                <Text className="font-inter-semibold text-base text-brand">
+                  {t('recipes.chooseAnotherItem')}
+                </Text>
               </Pressable>
-            </ScrollView>
+              <ScrollView
+                className="flex-1"
+                contentContainerStyle={{ gap: 12, paddingHorizontal: 16, paddingTop: 4 }}
+                keyboardShouldPersistTaps="handled">
+                <View className="gap-1">
+                  <Text className="font-inter-semibold text-base text-ink">
+                    {selected.name}
+                  </Text>
+                  {selectedPrice !== undefined ? (
+                    <Text className="font-inter text-sm text-muted">
+                      {formatCurrency(
+                        new Decimal(selectedPrice).div(new Decimal(10).pow(fractionDigits)),
+                        currency,
+                        locale,
+                      )}
+                    </Text>
+                  ) : null}
+                </View>
+                <View className="flex-row items-end gap-3">
+                  <View className="flex-1">
+                    <TextField
+                      label={t('recipes.quantity')}
+                      value={quantity}
+                      onChangeText={setQuantity}
+                      onBlur={() => setQuantity(formatDecimalInput(quantity, locale))}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ alignItems: 'center', gap: 8 }}>
+                    {selected.units.map((availableUnit) => (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: unit === availableUnit }}
+                        accessibilityLabel={t('recipes.selectUnitValue', {
+                          unit: t(`units.${availableUnit}`),
+                        })}
+                        key={availableUnit}
+                        onPress={() => setUnit(availableUnit)}
+                        className={`min-h-12 min-w-12 items-center justify-center rounded-xl border px-3 ${
+                          unit === availableUnit
+                            ? 'border-brand bg-brandSoft'
+                            : 'border-line bg-surface'
+                        }`}>
+                        <Text className="font-inter text-sm text-ink">
+                          {t(`units.${availableUnit}`)}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+                {error ? (
+                  <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
+                    {error}
+                  </Text>
+                ) : null}
+              </ScrollView>
+              <View className="border-t border-line px-4 py-3">
+                <Button
+                  label={initialItem ? t('recipes.editItem') : t('recipes.addItem')}
+                  onPress={handleAdd}
+                />
+              </View>
+            </View>
           ) : (
-            <View className="flex-shrink">
+            <View className="flex-1">
               <View className="flex-row border-b border-line px-2">
                 {(['ingredient', 'recipe', 'packaging'] as ItemKind[]).map((tabKind) => (
                   <Pressable
@@ -363,7 +430,7 @@ export function RecipeItemPickerSheet({
                   </Pressable>
                 ))}
               </View>
-              <View className="mx-4 my-3 min-h-12 flex-row items-center rounded-xl border border-line bg-surface px-3">
+              <View className="mx-4 my-3 min-h-12 flex-row items-center rounded-xl border border-line bg-bg px-3">
                 <TextInput
                   accessibilityLabel={t('recipes.itemSearch')}
                   value={query}
@@ -373,41 +440,35 @@ export function RecipeItemPickerSheet({
                   className="min-h-12 flex-1 p-0 font-inter text-base text-ink"
                 />
               </View>
-              <ScrollView
-                className="max-h-56"
-                contentContainerStyle={{ paddingHorizontal: 16 }}
-                keyboardShouldPersistTaps="handled">
-                {visibleOptions.length === 0 ? (
-                  <Text className="font-inter py-4 text-base text-muted">
+              <FlashList
+                data={visibleOptions}
+                keyExtractor={(option) => `${option.kind}-${option.id}`}
+                renderItem={({ item }) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: false }}
+                    accessibilityLabel={t('recipes.selectItem', { name: item.name })}
+                    onPress={() => selectOption(item)}
+                    className="min-h-12 flex-row items-center justify-between border-b border-line py-3">
+                    <Text className="flex-1 font-inter text-base text-ink">{item.name}</Text>
+                    <Text className="ms-2 font-inter text-sm text-muted">
+                      {t(`units.${item.defaultUnit}`)}
+                    </Text>
+                  </Pressable>
+                )}
+                ListEmptyComponent={
+                  <Text className="py-4 font-inter text-base text-muted">
                     {kind === 'ingredient'
                       ? t('recipes.noIngredients')
                       : kind === 'recipe'
                         ? t('recipes.noSubRecipes')
                         : t('recipes.noPackaging')}
                   </Text>
-                ) : (
-                  visibleOptions.map((option) => (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        selected: selected?.id === option.id && selected.kind === option.kind,
-                      }}
-                      accessibilityLabel={t('recipes.selectItem', { name: option.name })}
-                      key={option.id}
-                      onPress={() => selectOption(option)}
-                      className={`min-h-12 flex-row items-center justify-between border-b border-line py-3 ${
-                        selected?.id === option.id && selected.kind === option.kind
-                          ? 'bg-surface'
-                          : ''
-                      }`}>
-                      <Text className="flex-1 font-inter text-base text-ink">{option.name}</Text>
-                      <Text className="ms-2 font-inter text-sm text-muted">
-                        {t(`units.${option.defaultUnit}`)}
-                      </Text>
-                    </Pressable>
-                  ))
-                )}
-              </ScrollView>
+                }
+                contentContainerStyle={{ paddingHorizontal: 16 }}
+                keyboardShouldPersistTaps="handled"
+                style={{ flex: 1 }}
+              />
               {kind === 'packaging' ? (
                 <Pressable
                   accessibilityRole="button"
@@ -416,74 +477,16 @@ export function RecipeItemPickerSheet({
                     setIsCreatingPackaging(true);
                     setError('');
                   }}
-                  className="mx-4 mt-2 min-h-12 items-center justify-center rounded-xl border border-line bg-surface">
+                  className="mx-4 mt-2 min-h-12 items-center justify-center rounded-xl border border-line bg-bg">
                   <Text className="text-base font-inter-semibold text-ink">
                     {t('recipes.createPackaging')}
                   </Text>
                 </Pressable>
               ) : null}
-              {selected ? (
-                <View className="gap-3 px-4 pb-4 pt-3">
-                  <Text className="text-sm font-inter-semibold text-ink">{selected.name}</Text>
-                  {selectedPrice !== undefined ? (
-                    <Text className="font-inter text-sm text-muted">
-                      {formatCurrency(
-                        new Decimal(selectedPrice).div(new Decimal(10).pow(fractionDigits)),
-                        currency,
-                        locale,
-                      )}
-                    </Text>
-                  ) : null}
-                  <View className="flex-row items-end gap-3">
-                    <View className="flex-1">
-                      <TextField
-                        label={t('recipes.quantity')}
-                        value={quantity}
-                        onChangeText={setQuantity}
-                        onBlur={() => setQuantity(formatDecimalInput(quantity, locale))}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={{ alignItems: 'center', gap: 8 }}>
-                      {selected.units.map((availableUnit) => (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: unit === availableUnit }}
-                          accessibilityLabel={t('recipes.selectUnitValue', {
-                            unit: t(`units.${availableUnit}`),
-                          })}
-                          key={availableUnit}
-                          onPress={() => setUnit(availableUnit)}
-                          className={`min-h-12 min-w-12 items-center justify-center rounded-xl border px-3 ${
-                            unit === availableUnit
-                              ? 'border-ink bg-surface'
-                              : 'border-line bg-surface'
-                          }`}>
-                          <Text className="font-inter text-sm text-ink">
-                            {t(`units.${availableUnit}`)}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                  {error ? (
-                    <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
-                      {error}
-                    </Text>
-                  ) : null}
-                  <Button
-                    label={initialItem ? t('recipes.editItem') : t('recipes.addItem')}
-                    onPress={handleAdd}
-                  />
-                </View>
-              ) : null}
             </View>
           )}
-        </SafeAreaView>
-      </View>
-    </Modal>
+        </View>
+      )}
+    </BottomSheet>
   );
 }
