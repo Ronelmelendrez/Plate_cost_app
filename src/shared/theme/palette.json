@@ -5,7 +5,11 @@
   "muted": "#6B645B",
   "line": "#E7E2DA",
   "brand": "#1F6F5C",
+  "brandSoft": "#E6F2EE",
   "good": "#1E7A3E",
+  "goodSoft": "#E7F4EB",
   "warn": "#B26A00",
-  "bad": "#C0392B"
+  "warnSoft": "#FBF1DE",
+  "bad": "#C0392B",
+  "badSoft": "#FAEAE7"
 }

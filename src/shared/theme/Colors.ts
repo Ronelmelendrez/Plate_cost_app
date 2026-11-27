@@ -12,6 +12,10 @@ export default {
     good: palette.good,
     warn: palette.warn,
     bad: palette.bad,
+    brandSoft: palette.brandSoft,
+    goodSoft: palette.goodSoft,
+    warnSoft: palette.warnSoft,
+    badSoft: palette.badSoft,
   },
   dark: {
     text: palette.ink,
@@ -24,5 +28,9 @@ export default {
     good: palette.good,
     warn: palette.warn,
     bad: palette.bad,
+    brandSoft: palette.brandSoft,
+    goodSoft: palette.goodSoft,
+    warnSoft: palette.warnSoft,
+    badSoft: palette.badSoft,
   },
 };

@@ -10,22 +10,30 @@ import { Colors } from '@shared/theme';
 const statusStyles = {
   good: {
     color: Colors.light.good,
+    soft: Colors.light.goodSoft,
     icon: { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' },
     label: 'good',
   },
   close: {
     color: Colors.light.warn,
+    soft: Colors.light.warnSoft,
     icon: { ios: 'minus.circle.fill', android: 'remove_circle', web: 'remove_circle' },
     label: 'close',
   },
   low: {
     color: Colors.light.bad,
+    soft: Colors.light.badSoft,
     icon: { ios: 'arrow.down.circle.fill', android: 'arrow_downward', web: 'arrow_downward' },
     label: 'low',
   },
 } satisfies Record<
   MarginStatus,
-  { color: string; icon: ComponentProps<typeof SymbolView>['name']; label: string }
+  {
+    color: string;
+    soft: string;
+    icon: ComponentProps<typeof SymbolView>['name'];
+    label: string;
+  }
 >;
 
 function formatMargin(value: number, locale: string) {
@@ -55,6 +63,12 @@ export function MarginDishRow({
   const cost = formatCurrency(row.cost, currency, locale);
   const profit = row.profit ? formatCurrency(row.profit, currency, locale) : undefined;
 
+  const stats = [
+    { label: t('dashboard.priceLabel'), value: price ?? '—' },
+    { label: t('dashboard.costLabel'), value: cost },
+    { label: t('dashboard.profitLabel'), value: profit ?? '—' },
+  ];
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -67,30 +81,65 @@ export function MarginDishRow({
         status: styles ? t(`dashboard.status.${styles.label}`) : t('dashboard.notSoldHere'),
       })}
       onPress={onPress}
-      className="mb-3 min-h-20 rounded-xl border border-line bg-surface p-4">
-      <View className="flex-row items-start justify-between gap-3">
-        <Text className="flex-1 text-lg font-semibold text-ink">{row.name}</Text>
-        {styles && margin ? (
-          <View className="flex-row items-center gap-1 rounded-full bg-bg px-3 py-2">
-            <SymbolView
-              name={styles.icon}
-              tintColor={styles.color}
-              size={18}
+      className="mb-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+      <View className="flex-row items-start gap-3">
+        <View className="min-w-0 flex-1 gap-1.5 pr-1">
+          <Text className="font-inter-bold text-[16px] leading-[22px] text-ink">{row.name}</Text>
+          <View className="flex-row items-center gap-1.5">
+            <View
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: styles ? styles.color : Colors.light.tabIconDefault }}
             />
-            <Text style={{ color: styles.color }} className="text-xs font-semibold">
-              {t(`dashboard.status.${styles.label}`)}
+            <Text
+              numberOfLines={1}
+              className="shrink font-inter-semibold text-[11px] uppercase tracking-[0.6px]"
+              style={{ color: styles ? styles.color : Colors.light.tabIconDefault }}>
+              {styles ? t(`dashboard.status.${styles.label}`) : t('dashboard.notSoldHere')}
             </Text>
-            <Text className="ms-1 text-base font-bold text-ink">{margin}</Text>
           </View>
-        ) : (
-          <Text className="text-sm text-muted">{t('dashboard.notSoldHere')}</Text>
-        )}
+        </View>
+
+        <View
+          className="shrink-0 items-center rounded-2xl px-3 py-2"
+          style={{ backgroundColor: styles ? styles.soft : Colors.light.background }}>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            className="font-inter-extrabold text-[18px] leading-[22px]"
+            style={{ color: styles ? styles.color : Colors.light.tabIconDefault }}>
+            {margin ?? '—'}
+          </Text>
+          <Text
+            numberOfLines={1}
+            className="mt-0.5 font-inter-semibold text-[10px] uppercase tracking-[0.5px] text-muted">
+            {t('dashboard.marginLabel')}
+          </Text>
+        </View>
       </View>
-      <Text className="mt-3 border-t border-line pt-3 text-sm leading-5 text-muted">
-        {price && profit
-          ? t('dashboard.priceCostProfit', { price, cost, profit })
-          : t('dashboard.unpricedDishCost', { cost })}
-      </Text>
+
+      <View className="mt-3 flex-row rounded-2xl border border-line bg-bg">
+        {stats.map((stat, index) => (
+          <View
+            key={stat.label}
+            className={`min-w-0 flex-1 items-center gap-0.5 px-1 py-2.5 ${
+              index > 0 ? 'border-l border-line' : ''
+            }`}>
+            <Text
+              numberOfLines={1}
+              className="font-inter-semibold text-[10px] uppercase tracking-[0.6px] text-muted">
+              {stat.label}
+            </Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+              className="font-inter-semibold text-[13px] text-ink">
+              {stat.value}
+            </Text>
+          </View>
+        ))}
+      </View>
     </Pressable>
   );
 }

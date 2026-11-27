@@ -1,7 +1,10 @@
 import { FlashList } from '@shopify/flash-list';
 import Slider from '@react-native-community/slider';
 import { Decimal } from 'decimal.js';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import type { ComponentProps } from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -18,7 +21,11 @@ import {
   snoozeBackupReminder,
 } from '@features/backup';
 import { getRecipeWorkspace } from '@features/recipes';
-import { DashboardHeader } from '@features/dashboard/components/DashboardHeader';
+import {
+  DashboardHeader,
+  HERO_BOTTOM,
+  HERO_TOP,
+} from '@features/dashboard/components/DashboardHeader';
 import { MarginDishRow } from '@features/dashboard/components/MarginDishRow';
 import {
   buildMarginDashboardRows,
@@ -31,7 +38,6 @@ import {
   type MarginDashboardFilter,
 } from '@features/dashboard/domain/marginFilters';
 import { saveTargetMargin, type AppSettings } from '@features/settings';
-import { Button } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
 type RecipeWorkspace = Awaited<ReturnType<typeof getRecipeWorkspace>>;
@@ -199,216 +205,278 @@ export default function DashboardScreen() {
     }
   };
 
+  const filterTiles = [
+    { id: 'all', label: t('dashboard.filterAll'), count: searchedRows.length },
+    { id: 'below-target', label: t('dashboard.filterBelowTarget'), count: searchBelowTargetCount },
+    { id: 'target-met', label: t('dashboard.filterTargetMet'), count: searchTargetMetCount },
+  ] satisfies { id: MarginDashboardFilter; label: string; count: number }[];
+  const isMeetingTarget = pricedRows.length > 0 && belowTargetCount === 0;
+  const summaryTone = !pricedRows.length
+    ? {
+        className: 'bg-bg',
+        color: Colors.light.tabIconDefault,
+        icon: {
+          ios: 'info.circle.fill',
+          android: 'info',
+          web: 'info',
+        } as ComponentProps<typeof SymbolView>['name'],
+      }
+    : isMeetingTarget
+      ? {
+          className: 'bg-goodSoft',
+          color: Colors.light.good,
+          icon: {
+            ios: 'checkmark.circle.fill',
+            android: 'check_circle',
+            web: 'check_circle',
+          } as ComponentProps<typeof SymbolView>['name'],
+        }
+      : {
+          className: 'bg-warnSoft',
+          color: Colors.light.warn,
+          icon: {
+            ios: 'exclamationmark.circle.fill',
+            android: 'warning',
+            web: 'warning',
+          } as ComponentProps<typeof SymbolView>['name'],
+        };
+
   const dashboardHeader = (
     <View>
-      <View className="gap-1 px-4 pb-4 pt-5">
-        <Text accessibilityRole="header" className="text-2xl font-bold text-ink">
-          {t('dashboard.title')}
-        </Text>
-        <Text className="text-base leading-6 text-muted">{t('dashboard.subtitle')}</Text>
-      </View>
-
-      {workspace && workspace.channels.length > 0 ? (
-        <View className="mx-4 mb-3 gap-3 rounded-xl border border-line bg-surface p-4">
-          <View className="gap-1">
-            <Text className="text-base font-semibold text-ink">
-              {t('pricing.salesChannel')}
-            </Text>
-            <Text className="text-sm leading-5 text-muted">
-              {t('dashboard.channelHint')}
-            </Text>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2">
-            {workspace.channels.map((channel) => {
-              const selected = channel.id === selectedChannelId;
-              return (
-                <Pressable
-                  key={channel.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={t('dashboard.selectChannel', { name: channel.name })}
-                  onPress={() => setSelectedChannelId(channel.id)}
-                  className={`min-h-12 items-center justify-center rounded-full border px-4 ${
-                    selected ? 'border-brand bg-brand' : 'border-line bg-bg'
-                  }`}>
-                  <Text className={`text-base ${selected ? 'font-semibold text-white' : 'text-ink'}`}>
-                    {channel.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : null}
-
-      {workspace ? (
-        <View className="mx-4 mb-4 gap-3 rounded-xl border border-line bg-surface p-4">
-          <View className="flex-row items-center justify-between gap-3">
-            <View className="flex-1 gap-1">
-              <Text className="text-base font-semibold text-ink">
-                {t('dashboard.targetMargin')}
-              </Text>
-              <Text className="text-sm leading-5 text-muted">
-                {t('dashboard.targetMarginHint')}
-              </Text>
-            </View>
-            <Text className="text-2xl font-bold text-brand">{targetMarginLabel}</Text>
-          </View>
-          <Slider
-            accessibilityLabel={t('dashboard.targetMargin')}
-            minimumValue={0}
-            maximumValue={100}
-            step={0.1}
-            value={targetMargin}
-            onValueChange={(value) => setTargetMargin(Number(value.toFixed(1)))}
-            onSlidingComplete={(value) => void saveTarget(value)}
-            disabled={isSavingTarget}
-            minimumTrackTintColor={Colors.light.tint}
-            maximumTrackTintColor={Colors.light.line}
-            thumbTintColor={Colors.light.tint}
-            thumbSize={28}
-            style={{ height: 48, width: '100%' }}
-          />
-          <View className="rounded-xl bg-bg px-3 py-3">
-            {pricedRows.length > 0 ? (
-              <Text accessibilityRole="summary" className="text-sm leading-5 text-muted">
-                {t('dashboard.belowTargetSummary', {
-                  count: pricedRows.length,
-                  below: belowTargetCount,
-                  total: pricedRows.length,
-                })}
-              </Text>
-            ) : (
-              <Text className="text-sm leading-5 text-muted">
-                {t('dashboard.noPricedDishes')}
-              </Text>
-            )}
-          </View>
-        </View>
-      ) : null}
-      {backupReminderKind ? (
-        <View className="mx-4 mb-3 gap-3 rounded-xl border border-line bg-surface p-4">
-          <Text className="text-base font-semibold text-ink">
-            {t('dashboard.backupReminderTitle')}
-          </Text>
-          <Text className="text-base leading-6 text-muted">
-            {t(`dashboard.backupReminder.${backupReminderKind}`)}
-          </Text>
-          {backupReminderError ? (
-            <Text accessibilityRole="alert" className="text-sm text-bad">
-              {backupReminderError}
-            </Text>
-          ) : null}
-          <Button
-            label={t('dashboard.createBackup')}
-            variant="secondary"
-            onPress={() => void createReminderBackup()}
-            disabled={isBackupBusy}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('dashboard.remindBackupLater')}
-            onPress={() => void snoozeReminder()}
-            className="min-h-12 items-center justify-center">
-            <Text className="text-base font-semibold text-brand">
-              {t('dashboard.remindBackupLater')}
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {rowResult.error ? (
-        <Text accessibilityRole="alert" className="px-4 pt-3 text-base text-bad">
-          {rowResult.error}
-        </Text>
-      ) : null}
-
-      {error ? (
-        <View className="px-4 pt-3">
-          <Text accessibilityRole="alert" className="text-base text-bad">
-            {error}
-          </Text>
-          {!workspace ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('dashboard.retry')}
-              onPress={() => void loadDashboard()}
-              className="min-h-12 justify-center">
-              <Text className="text-base font-semibold text-brand">{t('dashboard.retry')}</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
+      {/* Continues the hero gradient so the summary cards float over it. */}
+      <LinearGradient
+        colors={[HERO_BOTTOM, Colors.light.background] as const}
+        locations={[0.25, 1]}
+        style={{ height: dishCount > 0 ? 140 : 72 }}
+      />
 
       {dishCount > 0 ? (
-        <View className="mx-4 mb-3 gap-3 rounded-xl border border-line bg-surface p-4">
-          <Text className="text-base font-semibold text-ink">
-            {t('dashboard.filterDishes')}
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2">
-            {([
-              { id: 'all', label: t('dashboard.filterAll'), count: searchedRows.length },
-              {
-                id: 'below-target',
-                label: t('dashboard.filterBelowTarget'),
-                count: searchBelowTargetCount,
-              },
-              {
-                id: 'target-met',
-                label: t('dashboard.filterTargetMet'),
-                count: searchTargetMetCount,
-              },
-            ] satisfies { id: MarginDashboardFilter; label: string; count: number }[]).map(
-              (filter) => {
-                const selected = filter.id === marginFilter;
+        <View className="-mt-28 flex-row gap-3 px-4">
+          {filterTiles.map((tile) => {
+            const selected = tile.id === marginFilter;
+            return (
+              <Pressable
+                key={tile.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={t('dashboard.selectDishFilter', {
+                  filter: tile.label,
+                  count: tile.count,
+                })}
+                onPress={() => setMarginFilter(tile.id)}
+                className={`flex-1 items-center gap-1 rounded-3xl border px-2 py-3 shadow-sm ${
+                  selected ? 'border-brand bg-brandSoft' : 'border-line bg-surface'
+                }`}>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.5}
+                  className={`font-inter-extrabold text-[26px] leading-[30px] ${
+                    selected ? 'text-brand' : 'text-ink'
+                  }`}>
+                  {tile.count}
+                </Text>
+                <Text
+                  numberOfLines={2}
+                  className={`text-center font-inter-semibold text-[10px] uppercase tracking-[0.4px] ${
+                    selected ? 'text-brand' : 'text-muted'
+                  }`}>
+                  {tile.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
+      <View className="mt-4 gap-3 px-4">
+        {workspace && workspace.channels.length > 0 ? (
+          <View className="gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+            <View className="gap-1">
+              <Text className="font-inter-bold text-[11px] uppercase tracking-[0.8px] text-brand">
+                {t('pricing.salesChannel')}
+              </Text>
+              <Text className="font-inter text-[13px] leading-[18px] text-muted">
+                {t('dashboard.channelHint')}
+              </Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-2">
+              {workspace.channels.map((channel) => {
+                const selected = channel.id === selectedChannelId;
                 return (
                   <Pressable
-                    key={filter.id}
+                    key={channel.id}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
-                    accessibilityLabel={t('dashboard.selectDishFilter', {
-                      filter: filter.label,
-                      count: filter.count,
-                    })}
-                    onPress={() => setMarginFilter(filter.id)}
-                    className={`min-h-12 flex-row items-center gap-2 rounded-full border px-4 ${
-                      selected ? 'border-brand bg-brand' : 'border-line bg-bg'
+                    accessibilityLabel={t('dashboard.selectChannel', { name: channel.name })}
+                    onPress={() => setSelectedChannelId(channel.id)}
+                    className={`min-h-11 items-center justify-center rounded-full border px-4 ${
+                      selected ? 'border-brand bg-brand shadow-sm' : 'border-line bg-bg'
                     }`}>
                     <Text
-                      className={`text-base ${
-                        selected ? 'font-semibold text-white' : 'text-ink'
+                      className={`text-[14px] ${
+                        selected ? 'font-inter-semibold text-white' : 'font-inter-medium text-ink'
                       }`}>
-                      {filter.label}
-                    </Text>
-                    <Text
-                      className={`text-sm ${
-                        selected ? 'font-semibold text-white' : 'text-muted'
-                      }`}>
-                      {filter.count}
+                      {channel.name}
                     </Text>
                   </Pressable>
                 );
-              },
-            )}
-          </ScrollView>
-        </View>
-      ) : null}
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
 
-      {dishCount > 0 ? (
-        <Text className="px-4 pb-3 pt-1 text-lg font-semibold text-ink">
-          {t('dashboard.dishesHeading')}
-        </Text>
-      ) : null}
+        {workspace ? (
+          <View className="gap-3 rounded-3xl border border-line bg-surface p-4 shadow-sm">
+            <View className="flex-row items-start justify-between gap-3">
+              <View className="min-w-0 flex-1 gap-1">
+                <Text className="font-inter-bold text-[15px] leading-[20px] text-ink">
+                  {t('dashboard.targetMargin')}
+                </Text>
+                <Text className="font-inter text-[13px] leading-[18px] text-muted">
+                  {t('dashboard.targetMarginHint')}
+                </Text>
+              </View>
+              <View className="shrink-0 items-center rounded-2xl bg-brandSoft px-3 py-2">
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                  className="font-inter-extrabold text-[22px] leading-[26px] text-brand">
+                  {targetMarginLabel}
+                </Text>
+              </View>
+            </View>
+            <Slider
+              accessibilityLabel={t('dashboard.targetMargin')}
+              minimumValue={0}
+              maximumValue={100}
+              step={0.1}
+              value={targetMargin}
+              onValueChange={(value) => setTargetMargin(Number(value.toFixed(1)))}
+              onSlidingComplete={(value) => void saveTarget(value)}
+              disabled={isSavingTarget}
+              minimumTrackTintColor={Colors.light.tint}
+              maximumTrackTintColor={Colors.light.line}
+              thumbTintColor={Colors.light.tint}
+              thumbSize={28}
+              style={{ height: 48, width: '100%' }}
+            />
+            <View
+              className={`flex-row items-start gap-2 rounded-2xl px-3.5 py-3 ${summaryTone.className}`}>
+              <SymbolView
+                name={summaryTone.icon}
+                tintColor={summaryTone.color}
+                size={16}
+                style={{ marginTop: 1 }}
+              />
+              <Text
+                accessibilityRole="summary"
+                className="flex-1 font-inter text-[13px] leading-[18px] text-ink">
+                {pricedRows.length > 0
+                  ? t('dashboard.belowTargetSummary', {
+                      count: pricedRows.length,
+                      below: belowTargetCount,
+                      total: pricedRows.length,
+                    })
+                  : t('dashboard.noPricedDishes')}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {backupReminderKind ? (
+          <View className="gap-3 rounded-3xl border border-[#F2E3C6] bg-[#FFF9EC] p-4">
+            <View className="flex-row items-center gap-2">
+              <SymbolView
+                name={{
+                  ios: 'exclamationmark.shield.fill',
+                  android: 'security',
+                  web: 'security',
+                }}
+                tintColor={Colors.light.warn}
+                size={18}
+              />
+              <Text className="font-inter-bold text-[15px] text-ink">
+                {t('dashboard.backupReminderTitle')}
+              </Text>
+            </View>
+            <Text className="font-inter text-[13px] leading-[19px] text-muted">
+              {t(`dashboard.backupReminder.${backupReminderKind}`)}
+            </Text>
+            {backupReminderError ? (
+              <Text accessibilityRole="alert" className="font-inter-semibold text-[13px] text-bad">
+                {backupReminderError}
+              </Text>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('dashboard.createBackup')}
+              disabled={isBackupBusy}
+              onPress={() => void createReminderBackup()}
+              className={`min-h-12 items-center justify-center rounded-2xl border border-line bg-surface px-4 ${
+                isBackupBusy ? 'opacity-50' : ''
+              }`}>
+              <Text className="font-inter-semibold text-[15px] text-ink">
+                {t('dashboard.createBackup')}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('dashboard.remindBackupLater')}
+              onPress={() => void snoozeReminder()}
+              className="min-h-11 items-center justify-center">
+              <Text className="font-inter-semibold text-[14px] text-brand">
+                {t('dashboard.remindBackupLater')}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {rowResult.error ? (
+          <View className="rounded-2xl border border-line bg-badSoft p-3.5">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
+              {rowResult.error}
+            </Text>
+          </View>
+        ) : null}
+
+        {error ? (
+          <View className="rounded-2xl border border-line bg-badSoft p-3.5">
+            <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
+              {error}
+            </Text>
+            {!workspace ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('dashboard.retry')}
+                onPress={() => void loadDashboard()}
+                className="min-h-11 justify-center">
+                <Text className="font-inter-semibold text-[14px] text-brand">{t('dashboard.retry')}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {dishCount > 0 ? (
+          <View className="flex-row items-center justify-between pt-2 pb-1">
+            <Text className="font-inter-extrabold text-[18px] text-ink">
+              {t('dashboard.dishesHeading')}
+            </Text>
+            <View className="rounded-full bg-brandSoft px-2.5 py-1">
+              <Text className="font-inter-bold text-[11px] text-brand">{visibleRows.length}</Text>
+            </View>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
+    <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: HERO_TOP }}>
       <DashboardHeader
         query={query}
         onChangeQuery={setQuery}
@@ -438,42 +506,55 @@ export default function DashboardScreen() {
         )}
         ListEmptyComponent={
           isLoading ? (
-            <Text className="py-8 text-center text-base text-muted">{t('dashboard.loading')}</Text>
+            <Text className="py-8 text-center font-inter text-[15px] text-muted">
+              {t('dashboard.loading')}
+            </Text>
           ) : !workspace ? null : dishCount === 0 ? (
-            <View className="items-center gap-2 px-4 py-8">
-              <Text className="text-base font-semibold text-ink">
+            <View className="items-center gap-2 px-6 py-10">
+              <View className="h-14 w-14 items-center justify-center rounded-full bg-brandSoft">
+                <SymbolView
+                  name={{
+                    ios: 'fork.knife',
+                    android: 'restaurant_menu',
+                    web: 'restaurant_menu',
+                  }}
+                  tintColor={Colors.light.tint}
+                  size={26}
+                />
+              </View>
+              <Text className="mt-1 font-inter-bold text-[17px] text-ink">
                 {t('dashboard.emptyTitle')}
               </Text>
-              <Text className="text-center text-base leading-6 text-muted">
+              <Text className="text-center font-inter text-[14px] leading-[20px] text-muted">
                 {t('dashboard.emptyBody')}
               </Text>
             </View>
           ) : query.trim() && searchedRows.length === 0 ? (
             <View className="items-center gap-2 px-4 py-8">
-              <Text className="text-center text-base text-muted">
+              <Text className="text-center font-inter text-[14px] text-muted">
                 {t('dashboard.searchNoResults')}
               </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('dashboard.clearSearch')}
                 onPress={() => setQuery('')}
-                className="min-h-12 justify-center">
-                <Text className="text-base font-semibold text-brand">
+                className="min-h-11 justify-center">
+                <Text className="font-inter-semibold text-[14px] text-brand">
                   {t('dashboard.clearSearch')}
                 </Text>
               </Pressable>
             </View>
           ) : marginFilter !== 'all' ? (
             <View className="items-center gap-2 px-4 py-8">
-              <Text className="text-center text-base text-muted">
+              <Text className="text-center font-inter text-[14px] text-muted">
                 {t('dashboard.noDishesInFilter')}
               </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('dashboard.showAllDishes')}
                 onPress={() => setMarginFilter('all')}
-                className="min-h-12 justify-center">
-                <Text className="text-base font-semibold text-brand">
+                className="min-h-11 justify-center">
+                <Text className="font-inter-semibold text-[14px] text-brand">
                   {t('dashboard.showAllDishes')}
                 </Text>
               </Pressable>
@@ -484,7 +565,7 @@ export default function DashboardScreen() {
           flexGrow: 1,
           paddingBottom: 24,
         }}
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: Colors.light.background }}
       />
     </SafeAreaView>
   );

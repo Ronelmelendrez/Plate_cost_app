@@ -13,6 +13,13 @@ module.exports = {
       colors: {
         ...palette,
       },
+      fontFamily: {
+        inter: ['Inter_400Regular'],
+        'inter-medium': ['Inter_500Medium'],
+        'inter-semibold': ['Inter_600SemiBold'],
+        'inter-bold': ['Inter_700Bold'],
+        'inter-extrabold': ['Inter_800ExtraBold'],
+      },
     },
   },
   plugins: [],
