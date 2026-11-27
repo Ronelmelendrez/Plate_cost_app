@@ -71,6 +71,12 @@ export interface CostBreakdownLine {
   quantity: string;
   unit: RecipeUnit;
   costPerPortion: Decimal;
+  subRecipeCalculation?: {
+    quantity: Decimal;
+    unit: BaseUnit;
+    costPerBaseUnit: Decimal;
+    lineCost: Decimal;
+  };
 }
 
 export interface PackagingCostBreakdownLine {
@@ -231,17 +237,16 @@ function computeRecipeCost(
   }
 
   const wasteFactor = new Decimal(1).plus(wastePercent.div(100));
-  const ingredientSubtotal = recipe.items.reduce(
-    (total, line) =>
-      total.plus(recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes)),
-    new Decimal(0),
-  );
+  const materialSubtotal = recipe.items.reduce((total, line) => {
+    const lineCost = recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes);
+    return total.plus(line.kind === 'ingredient' ? lineCost.mul(wasteFactor) : lineCost);
+  }, new Decimal(0));
   const laborCost = new Decimal(laborMinutes)
     .mul(recipe.laborRateMinor)
     .div(60)
     .div(new Decimal(10).pow(fractionDigits));
   const portions = recipe.isSubRecipe ? 1 : recipe.portions;
-  const materialPerPortion = ingredientSubtotal.mul(wasteFactor).div(portions);
+  const materialPerPortion = materialSubtotal.div(portions);
   let overheadPerPortion = new Decimal(0);
   if (recipe.overheadMode === 'flat') {
     overheadPerPortion = overheadValue;
@@ -280,13 +285,32 @@ function computeRecipeCost(
 
   const breakdown: CostBreakdownLine[] = recipe.items.map((line) => {
     const lineCost = recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes);
+    const subRecipeCalculation =
+      line.kind === 'recipe'
+        ? (() => {
+            const amount = quantityInBaseUnits(
+              line.quantity,
+              line.unit,
+              undefined,
+              unitSizes,
+            );
+            return {
+              quantity: amount.quantity,
+              unit: amount.unit,
+              costPerBaseUnit: lineCost.div(amount.quantity),
+              lineCost,
+            };
+          })()
+        : undefined;
     return {
       id: line.id,
       kind: line.kind,
       name: line.name,
       quantity: line.quantity,
       unit: line.unit,
-      costPerPortion: lineCost.mul(wasteFactor).div(portions),
+      costPerPortion: (line.kind === 'ingredient' ? lineCost.mul(wasteFactor) : lineCost)
+        .div(portions),
+      subRecipeCalculation,
     };
   });
   return {

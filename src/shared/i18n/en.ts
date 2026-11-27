@@ -480,6 +480,13 @@ export const en = {
     ingredientItem: 'Ingredient',
     recipeItem: 'Sub-recipe',
     packagingItem: 'Packaging',
+    showCalculation: 'Show calculation',
+    hideCalculation: 'Hide calculation',
+    showCalculationFor: 'Show calculation for {{name}}',
+    hideCalculationFor: 'Hide calculation for {{name}}',
+    subRecipeCostCalculation:
+      '{{quantity}} {{unit}} = {{baseQuantity}} {{baseUnit}} × {{unitCost}} per {{baseUnit}} = {{cost}}.',
+    finalSubRecipeLineCost: 'Cost per {{basis}} after portioning: {{cost}}.',
     itemSummary: '{{name}}, {{quantity}} {{unit}}, cost {{cost}} per {{basis}}.',
     itemCostBasis: 'plate',
     batchItemCostBasis: 'batch',

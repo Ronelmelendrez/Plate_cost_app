@@ -1319,6 +1319,7 @@ export default function RecipeDetailScreen() {
                   item={item}
                   name={resolveItemName(item)}
                   lineCost={line?.costPerPortion}
+                  subRecipeCalculation={line?.subRecipeCalculation}
                   isSubRecipe={isSubRecipe}
                   currency={currency}
                   locale={locale}

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   currencyFractionDigits,
   formatDecimalInput,
+  formatCurrency,
   parseDecimal,
   toMinorUnits,
 } from './money';
@@ -46,5 +47,13 @@ describe('currency precision', () => {
     expect(toMinorUnits(new Decimal('1.2345'), 4)).toBe(12345);
     expect(toMinorUnits(new Decimal('1.23456'), 4)).toBeNull();
     expect(toMinorUnits(new Decimal('1'), 5)).toBeNull();
+  });
+
+  it('preserves useful precision for non-zero amounts smaller than one currency unit', () => {
+    expect(formatCurrency(new Decimal('0.00005'), 'USD', 'en-US')).toBe('$0.00005');
+    expect(formatCurrency(new Decimal('0.0015'), 'USD', 'en-US')).toBe('$0.0015');
+    expect(formatCurrency(new Decimal('0.000525'), 'USD', 'en-US')).toBe('$0.000525');
+    expect(formatCurrency(new Decimal('0.5'), 'JPY', 'en-US')).toBe('¥0.5');
+    expect(formatCurrency(new Decimal('12.345'), 'USD', 'en-US')).toBe('$12.35');
   });
 });

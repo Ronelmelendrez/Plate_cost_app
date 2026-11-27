@@ -145,12 +145,18 @@ export function toMinorUnits(value: Decimal, fractionDigits: number) {
 export function formatCurrency(amount: Decimal, currency: string, locale: string) {
   const fractionDigits = currencyFractionDigits(currency, locale);
   const roundedAmount = amount.toDecimalPlaces(fractionDigits, Decimal.ROUND_HALF_UP);
+  const isBelowDisplayUnit =
+    !amount.isZero() &&
+    amount.abs().lt(new Decimal(1).div(new Decimal(10).pow(fractionDigits)));
+  const displayFractionDigits = isBelowDisplayUnit
+    ? Math.max(fractionDigits, Math.min(20, amount.decimalPlaces() ?? fractionDigits))
+    : fractionDigits;
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
     minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(roundedAmount.toNumber());
+    maximumFractionDigits: displayFractionDigits,
+  }).format((isBelowDisplayUnit ? amount : roundedAmount).toNumber());
 }
 
 export function currencyAffixes(currency: string, locale: string) {
