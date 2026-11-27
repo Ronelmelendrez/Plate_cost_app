@@ -119,6 +119,7 @@ Empty (one sentence + the next action), loading (skeleton only if over 300ms), e
 
 - Colours, spacing, and radii come from `tailwind.config.js` theme extensions mapped to the tokens above. No arbitrary values like `bg-[#123456]`.
 - Build or reuse components in `src/shared/ui`: `Button`, `Input`, `Slider`, `StatusPill`, `DishRow`, `ItemRow`, `BottomSheet`, `EmptyState`, `Snackbar`, `SectionHeader`, `ChannelSwitch`.
+- Reuse packaging feature components `ChannelChips` and `PackagingRow` through `features/packaging/index.ts`; do not duplicate them in recipes or move packaging-specific behavior into `shared/ui`.
 - Feature screens live in `src/features/<feature>/screens`; route files in `app/` only re-export them.
 - Use FlashList for lists over 20 rows; never nest vertical lists in vertical ScrollViews.
 - All user-facing strings go through i18n; no hard-coded text in components.

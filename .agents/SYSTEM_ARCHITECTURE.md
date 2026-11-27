@@ -24,7 +24,7 @@ No Redux, no server-state library, no analytics SDK in v1.
 
 ## 2. Architectural rules
 
-1. **Feature folders.** Everything for a feature lives together. Features never import from each other's internals, only from a feature's `index.ts` public API.
+1. **Feature folders.** Everything for a feature lives together. Features never import from each other's internals, only from a feature's `index.ts` public API. Recipes imports only `PackagingPicker` and packaging types from `features/packaging/index.ts`.
 2. **Thin routes.** `app/` files only render a screen from a feature.
 3. **Pure domain layer.** All costing math lives in `domain/` as plain TypeScript functions with no React, no database. They are fully unit tested.
 4. **Repositories wrap the database.** Screens and hooks never write SQL or Drizzle queries directly.
@@ -41,11 +41,12 @@ platecost/
 │  │  ├─ _layout.tsx             # 4 bottom tabs
 │  │  ├─ index.tsx               # Margins (dashboard)
 │  │  ├─ recipes.tsx
-│  │  ├─ ingredients.tsx
+│  │  ├─ ingredients.tsx         # Ingredients | Packaging switch
 │  │  └─ settings.tsx
 │  ├─ recipe/[id].tsx
 │  ├─ recipe/[id]/price.tsx      # What-if
 │  ├─ ingredient/[id].tsx
+│  ├─ packaging/[id].tsx
 │  ├─ impact.tsx
 │  └─ onboarding.tsx
 ├─ src/
@@ -58,7 +59,15 @@ platecost/
 │  │  │  ├─ domain/              # yield and unit-cost logic
 │  │  │  ├─ types.ts
 │  │  │  └─ index.ts             # public API
-│  │  ├─ recipes/                # builder, sub-recipes, packaging, cycle check
+│  │  ├─ packaging/
+│  │  │  ├─ screens/             # packaging list and form
+│  │  │  ├─ components/          # PackagingRow, PackagingPicker, ChannelChips
+│  │  │  ├─ hooks/
+│  │  │  ├─ data/                # repository, queries
+│  │  │  ├─ domain/              # cost per piece and bundle expansion
+│  │  │  ├─ types.ts
+│  │  │  └─ index.ts             # public API
+│  │  ├─ recipes/                # builder, sub-recipes, recipe packaging, cycle check
 │  │  ├─ channels/               # channels, waste, target margin, fees
 │  │  ├─ dashboard/              # margin list, target slider, status logic
 │  │  ├─ pricing/                # what-if slider, suggested price, rounding
@@ -91,32 +100,51 @@ platecost/
 
 All ids are UUID text. All money fields are integers. All quantities are in base units.
 
-| Table                      | Key fields                                                                                                                                                                                                                              |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ingredients`              | id, name, purchase_unit, purchase_qty, purchase_price, yield_pct, is_favourite, last_used_at, updated_at                                                                                                                                |
-| `unit_conversions`         | id, ingredient_id, from_unit, to_base_factor (e.g. cup to 120 g)                                                                                                                                                                        |
-| `ingredient_price_history` | id, ingredient_id, price, qty, recorded_at                                                                                                                                                                                              |
-| `packaging_items`          | id, name, cost                                                                                                                                                                                                                          |
-| `recipes`                  | id, name, batch_yield_qty, yield_unit, portions, is_sub_recipe, labor_minutes, notes, updated_at                                                                                                                                        |
-| `recipe_items`             | id, recipe_id, kind (`ingredient` / `recipe` / `packaging`), ref_id, qty, unit                                                                                                                                                          |
-| `channels`                 | id, name, commission_pct, payment_fee_pct, is_default                                                                                                                                                                                   |
-| `recipe_channel_prices`    | recipe_id, channel_id, price                                                                                                                                                                                                            |
-| `settings`                 | single row: currency_code, locale, language, unit_system (`metric` / `us`), cup_ml, tbsp_ml, prices_include_tax, tax_pct, waste_pct, target_margin_pct, labor_hourly_rate, overhead_mode, overhead_value, rounding_rule, schema_version |
+| Table                         | Key fields                                                                                                                                                                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ingredients`                 | id, name, purchase_unit, purchase_qty, purchase_price, yield_pct, is_favourite, last_used_at, updated_at                                                                                                                               |
+| `unit_conversions`            | id, ingredient_id, from_unit, to_base_factor (e.g. cup to 120 g)                                                                                                                                                                       |
+| `ingredient_price_history`    | id, ingredient_id, price, qty, recorded_at                                                                                                                                                                                            |
+| `packaging_items`             | id, name, pack_price_minor, pieces_per_pack, note, is_favourite, last_used_at, updated_at                                                                                                                                              |
+| `recipes`                     | id, name, batch_yield_qty, yield_unit, portions, is_sub_recipe, labor_minutes, notes, updated_at                                                                                                                                       |
+| `recipe_items`                | id, recipe_id, kind (`ingredient` / `recipe`), ref_id, qty, unit                                                                                                                                                                       |
+| `recipe_packaging`            | id, recipe_id, packaging_id, qty_per_portion, applies_to (`all` / `selected`)                                                                                                                                                          |
+| `recipe_packaging_channels`   | recipe_packaging_id, channel_id; populated only when the line applies to selected channels                                                                                                                                             |
+| `channels`                    | id, name, commission_pct, payment_fee_pct, is_default                                                                                                                                                                                  |
+| `recipe_channel_prices`       | recipe_id, channel_id, price                                                                                                                                                                                                           |
+| `global_settings`             | single row: currency_code, locale, unit_system (`metric` / `us`), cup_ml, tablespoon_ml, prices_include_tax, tax_pct, waste_pct, target_margin_pct, rounding_rule, onboarding and backup metadata |
+| `packaging_bundles` (v1.1)    | Deferred: saved named groups of packaging lines                                                                                                                                                                                       |
+| `packaging_bundle_items` (v1.1) | Deferred: packaging bundle membership and per-portion quantities                                                                                                                                                                       |
 
-Indexes: `recipe_items(recipe_id)`, `recipe_items(kind, ref_id)` (for impact lookups), `ingredients(name)`.
+`pack_price_minor` is an integer in the currency's minor unit. `pieces_per_pack` is the number of usable pieces in the purchased pack; cost per piece is derived with decimal math. Packaging lines are dish-only; validation rejects them for `is_sub_recipe = true`.
+
+Indexes: `recipe_items(recipe_id)`, `recipe_items(kind, ref_id)`, `recipe_packaging(packaging_id)` (for impact lookups), and `ingredients(name)`.
+
+### Migration from the current schema
+
+The app's current local schema is version 8. The immediately preceding schema (version 7) stores packaging in `packaging_items.cost_minor`, with packaging references in `recipe_items.kind = 'packaging'`. The forward version 8 migration:
+
+1. Preserves packaging ids, names, and timestamps; maps `cost_minor` to `pack_price_minor`, sets `pieces_per_pack = 1`, and gives new note/favourite/last-used fields safe defaults.
+2. Moves direct dish packaging to `recipe_packaging` with the original id and quantity, and sets `applies_to = 'all'`.
+3. Expands packaging owned by a sub-recipe onto each sold dish using the linked sub-recipe yield and the existing waste setting. The old sub-recipe rows remain as hidden legacy records; the editor does not expose them and costing ignores them.
+4. Rebuilds `recipe_items` with only `ingredient` and `recipe` kinds. All changes run in one transaction.
+
+Backup files at schema version 1 are normalized to version 2 on import. The conversion maps the old per-piece cost to a pack price with one piece per pack, moves direct packaging lines, expands sub-recipe packaging, and preserves legacy sub-recipe rows. New exports use version 2 and include both recipe packaging tables.
 
 ## 5. Cost engine (core/costing)
 
 Pure functions, no side effects.
 
 - `costPerUsableUnit(ingredient)`
-- `resolveItemCost(item, context)` handles ingredient, sub-recipe (recursive), and packaging
-- `recipeCost(recipeId, context)` returns `{ batchCost, perPortion, breakdown[] }`
+- `resolveItemCost(item, context)` handles ingredient and sub-recipe (recursive); packaging is costed separately
+- `costPerPiece(packaging)` divides pack price by pieces per pack using decimal math
+- `packagingCostPerPortion(recipe, channel, context)` sums only packaging lines that apply to the selected channel
+- `recipeCost(recipeId, context)` returns `{ batchFoodCost, foodCostPerPortion, packagingCostByChannel, breakdown[] }`
 - `netPrice(price, tax)` removes tax when prices include it
-- `channelResult(cost, price, channel, tax)` returns `{ netPrice, fees, profit, marginPct }`
-- `suggestedPrice(cost, targetMargin, channel, rounding)` returns a price, or an "impossible" result
+- `channelResult(totalCostForChannel, price, channel, tax)` returns `{ netPrice, fees, profit, marginPct }`
+- `suggestedPrice(totalCostForChannel, targetMargin, channel, rounding)` returns a price, or an "impossible" result
 - `detectCycle(recipeId, candidateChildId)` runs before saving a link
-- `impactOfChange(changedRef, before, after, target)` returns the affected dishes and which crossed below target
+- `impactOfChange(changedRef, before, after, target)` handles ingredient, sub-recipe, and packaging changes and returns affected dishes and which crossed below target
 
 Behaviour notes:
 
@@ -124,20 +152,25 @@ Behaviour notes:
 - Costs are derived, not stored. They are always recomputed from current inputs, so there is no stale data.
 - Rounding happens once, at the end, never in the middle of the chain.
 - Units convert through a base unit (g, ml, pc); incompatible units (grams to pieces without a custom conversion) return a typed error the UI can explain.
+- Food cost per portion includes ingredient/sub-recipe cost after the waste buffer, labor, and overhead. Packaging cost is reported separately and is never multiplied by the waste buffer.
+- Total cost for a channel is food cost per portion plus packaging lines scoped to all channels or that channel. Sub-recipes cannot own packaging lines.
+- Percentage overhead must use a channel-independent food-cost basis; it must not make the reported food-cost component vary with channel packaging.
 
 ## 6. Data flow
 
 ```
 Screen -> hook (useRecipeCost) -> repository (read rows) -> costEngine (pure) -> view model -> Screen
 Edit   -> form (Zod validated) -> repository.write -> invalidate -> recompute dashboard
+Packaging -> packaging feature public API -> recipe packaging repository -> channel-aware cost engine
 ```
 
 Dashboard recomputation loads all recipes and items in a few queries, runs the engine in memory, and renders. At 200 recipes this is well under 100 ms.
 
 ## 7. Backup and restore
 
-- Export: serialize all tables plus `schema_version` into one JSON file, shared through the Android share sheet.
-- Restore: pick file, validate with Zod and version, show a summary ("42 ingredients, 18 dishes"), ask to replace or merge (v1: replace only), then run in one transaction. Roll back on any error.
+- Export: serialize all tables plus `schema_version` into one JSON file, shared through the Android share sheet. Current exports use schema version 2.
+- Restore: pick file, validate its version and references, normalize version 1 files to version 2, and merge in one transaction. Roll back on any error.
+- Include packaging items, recipe packaging lines, and channel assignments. PDF cost sheets show food and packaging as separate blocks.
 - Reminder: prompt after the first saved recipe, then a gentle weekly nudge. Nothing leaves the device unless the user shares it.
 
 ## 8. Error handling
@@ -157,10 +190,18 @@ Dashboard recomputation loads all recipes and items in a few queries, runs the e
 
 | Layer        | Tool                       | What                                                                                                |
 | ------------ | -------------------------- | --------------------------------------------------------------------------------------------------- |
-| Cost engine  | Jest                       | Hand-calculated cases: yield, waste, nested sub-recipes, delivery fees, impossible margin, rounding |
-| Repositories | Jest + in-memory SQLite    | CRUD, migrations, restore transaction                                                               |
+| Cost engine  | Jest                       | Hand-calculated cases: yield, waste, nested sub-recipes, channel-specific packaging, delivery fees, impossible margin, rounding |
+| Repositories | Vitest                     | Costing, legacy packaging expansion, and v1-to-v2 backup normalization                               |
 | Screens      | RNTL                       | First-dish flow, empty states, validation messages                                                  |
 | Device       | Manual on 2 low-end phones | Performance, one-hand use, offline                                                                  |
+
+Packaging engine cases to write first:
+
+- A delivery-only box contributes to Delivery cost and margin, but not Dine-in.
+- A pack price of 450 for 100 pieces derives 4.50 per piece in a 2-decimal currency.
+- Derived costs and display formatting work with 0-decimal and 3-decimal currencies.
+- A packaging price change moves an affected dish below its target margin when expected.
+- A sub-recipe rejects packaging lines.
 
 Golden test: a fixture "Chicken Rice" dish with a stock sub-recipe, checked against a spreadsheet.
 

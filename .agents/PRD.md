@@ -39,29 +39,34 @@ Small food businesses worldwide (cafés, bakeries, street food stalls, small res
 
 ## 5. MVP scope
 
-### F1. Ingredient Library
+### F1. Ingredient and Packaging Libraries
 
 - Fields: name, purchase unit (kg, L, piece), purchase quantity, purchase price, usable yield % (default 100).
 - Auto-shows cost per usable unit.
 - Per-ingredient unit conversions (e.g. 1 cup flour = 120 g).
 - Recent and favourite ingredients first; search by name.
 - Updating price saves a history entry.
+- The Ingredients tab has a two-option switch: Ingredients | Packaging. This does not add a fifth tab.
+- Packaging fields: name, pack price, pieces per pack, note, favourite. Show the derived cost per piece using decimal math. Packaging has no yield or trimming-loss field.
+- Packaging can be searched and favourited, with recent and favourite items first. Offer generic starter packaging templates the first time the user opens Packaging; applying templates is optional.
 
 ### F2. Recipe Builder
 
-- Add ingredients, sub-recipes, and packaging items by quantity and unit.
+- Add ingredients and sub-recipes by quantity and unit.
 - Fields: batch yield (portions), selling price, notes.
-- Shows cost per batch and per portion.
+- Shows food cost and packaging cost separately in the summary.
 - Sub-recipes are linked, not copied. A change flows to every dish that uses them.
 - Circular links are blocked with a plain-language message.
-- Packaging items are reusable (name, cost), added per portion.
+- Dishes have a separate Packaging section below the ingredient and sub-recipe list, with a secondary "Add packaging" action. The screen's primary action remains "Add item".
+- Each packaging line has a packaging item, quantity per portion, and channel scope: all channels or selected channels. Packaging is not available on sub-recipes.
 - Optional: labor minutes per batch times hourly rate; overhead as flat amount or % per portion.
 
-### F3. Channels and Costs Settings
+### F3. Channels and Channel-Specific Costs
 
 - Global: waste % (default 5%, spoilage and mistakes), target margin %, plus currency, units, and tax settings (see section 6A).
 - Channels: Dine-in (no fees), Delivery (commission %, payment fee %), custom channels allowed.
 - Per recipe: choose which channels it is sold through and the price on each.
+- Channel cost includes only packaging lines marked for that channel or all channels. Dine-in has no packaging unless the owner adds it.
 - Waste % and yield % are labeled separately so owners understand the difference.
 
 ### F4. Margin Dashboard (home screen)
@@ -69,6 +74,7 @@ Small food businesses worldwide (cafés, bakeries, street food stalls, small res
 - List of every dish: price, true cost, profit per plate, margin %.
 - Status per row: green at or above target, amber within 5 points below, red worse. Always icon + label as well as colour.
 - Channel switch at top (Dine-in / Delivery) so the same dish shows two margins.
+- The selected channel's cost and margin include only its applicable packaging.
 - Target margin slider shows how many dishes fail.
 - Sort by worst margin first (default).
 - Analytics overview shows average margin, dishes below target, and the best and lowest margins for the selected channel, using saved prices only.
@@ -76,36 +82,43 @@ Small food businesses worldwide (cafés, bakeries, street food stalls, small res
 ### F5. What-If Price Slider
 
 - On a recipe: slider changes price and shows new margin and profit live.
+- Uses the selected channel's packaging cost for the live result and suggested price.
 - "Suggested price" button for the target margin on the selected channel, rounded to a friendly price.
 - "Use this price" saves it.
 
 ### F6. Price Change Impact
 
-- After editing an ingredient or sub-recipe price: "This affects 7 dishes. 2 are now below target." with a tap-through list.
+- After editing an ingredient, sub-recipe, or packaging pack price: "This affects 7 dishes. 2 are now below target." with a tap-through list.
+- Packaging price changes recalculate only dishes that use the packaging item; affected margins use each dish's applicable channel packaging.
 
 ### F7. Backup and Export
 
 - One-tap backup to a JSON file (share to Drive, WhatsApp, etc.) and restore from file.
 - Restore merges non-conflicting records. Existing records and current settings win conflicts; recipe items and channel prices are added only for new dishes, and unit conversions only for new ingredients.
-- Export a recipe cost sheet as PDF.
+- Backup and restore include packaging items, recipe packaging lines, and their channel assignments.
+- Export a recipe cost sheet as PDF with food and packaging shown as separate cost blocks.
 
 ### F8. First-run Onboarding
 
 - 3-step guided flow: add 3 ingredients, build 1 dish, see margin.
-- Starter templates for common ingredients, packaging, and platform commission rates (editable).
+- Packaging is optional and is not included in the 3-step flow. Starter packaging templates are offered when the user first opens the Packaging switch.
+- Starter templates for common ingredients and platform commission rates are editable.
 
 ## 6. Core formulas (source of truth)
 
 - Cost per usable unit = purchase price ÷ (purchase quantity × yield %).
 - Ingredient line cost = quantity (converted to base unit) × cost per usable base unit.
 - Sub-recipe cost per unit = sub-recipe batch cost ÷ its batch yield quantity.
-- Batch ingredient cost = sum of line costs × (1 + waste %).
-- Cost per portion = batch cost ÷ portions + packaging per portion + labor per portion + overhead per portion.
+- Packaging cost per piece = pack price ÷ pieces per pack, computed with decimal math.
+- Batch food cost = sum of ingredient and sub-recipe line costs × (1 + waste %). Packaging is never multiplied by the waste buffer.
+- Food cost per portion = batch food cost ÷ portions + labor per portion + overhead per portion.
+- Packaging cost per portion for a channel = sum of applicable packaging quantities per portion × cost per piece. A line applies when its scope is all channels or explicitly includes the selected channel.
+- Total cost per portion for a channel = food cost per portion + packaging cost per portion for that channel. Sub-recipes contain food costs only and cannot have packaging lines.
 - Net price = price ÷ (1 + tax %) when the user's prices include tax (VAT, GST, sales tax); otherwise net price = price. Tax is off by default.
 - Channel fees = net price × (commission % + payment fee %). Fees are charged on price, not cost. (Platforms differ on whether the base includes tax; the commission base is an editable assumption.)
-- Profit per plate = net price − fees − cost per portion.
+- Profit per plate = net price − fees − total cost per portion for the selected channel.
 - Margin % = profit ÷ net price.
-- Suggested net price = cost per portion ÷ (1 − target margin − commission % − payment fee %). Suggested shelf price = suggested net price × (1 + tax %) when prices include tax, then rounded by the currency's rounding rule.
+- Suggested net price = total cost per portion for the selected channel ÷ (1 − target margin − commission % − payment fee %). Suggested shelf price = suggested net price × (1 + tax %) when prices include tax, then rounded by the currency's rounding rule.
   If the denominator is zero or less, show: "This channel's fees are too high to reach your target margin."
 
 ## 6A. Global readiness (required in v1, not a later add-on)
@@ -120,7 +133,7 @@ Small food businesses worldwide (cafés, bakeries, street food stalls, small res
 | Number entry        | Accept both "," and "." as the decimal separator in every number field; show the locale's format after leaving the field.                                                                                                                           |
 | Channels            | Generic templates: Dine-in, Takeaway, Delivery app, Online order. No platform brand names baked in. The user names their own platform and enters their own rates.                                                                                   |
 | Rounding            | "Suggested price" rounds by currency: for 2-decimal currencies, nearest .00, .50, or .99 ending; for currencies with large units (JPY, IDR, VND), nearest 10, 50, 100, or 1,000. Default chosen per currency; changeable.                           |
-| Starter data        | Starter ingredients and packaging are generic and translated; regional packs can be added later without app changes.                                                                                                                                |
+| Starter data        | Starter ingredients and packaging are generic and translated; packaging templates appear on first use of the Packaging switch. Regional packs can be added later without app changes.                                                          |
 | Backup              | Backup file stores currency, unit system, and tax settings, so a restore on another phone or in another country works.                                                                                                                              |
 | Distribution        | Google Play in all countries, localized store listing and screenshots per launch language, a privacy policy stating that no data leaves the device.                                                                                                 |
 | Legal wording       | A short note in Settings: "Costs are estimates to help you price. They are not tax or accounting advice."                                                                                                                                           |
@@ -129,11 +142,11 @@ Changing currency later does not convert existing prices (the app has no exchang
 
 ## 7. Out of scope (v1)
 
-Cloud sync and accounts, inventory and stock, POS integration, sales analytics (menu engineering), break-even calculator, receipt photo scanning, AI features, multi-branch, iOS.
+Cloud sync and accounts, inventory and stock, POS integration, sales analytics (menu engineering), break-even calculator, receipt photo scanning, AI features, multi-branch, iOS, saved packaging bundles.
 
 ## 8. Later (v1.x, after validation)
 
-Menu engineering (stars, plowhorses, puzzles, dogs) from sales counts, break-even calculator, recipe scaling, ingredient price trend chart, paid tier for cloud sync and PDF branding.
+Menu engineering (stars, plowhorses, puzzles, dogs) from sales counts, break-even calculator, recipe scaling, ingredient price trend chart, paid tier for cloud sync and PDF branding. Consider saved packaging bundles (for example, a Delivery bundle) for v1.1 only if beta testers request them.
 
 ## 9. Non-functional requirements
 
@@ -158,7 +171,7 @@ Menu engineering (stars, plowhorses, puzzles, dogs) from sales counts, break-eve
 
 1. **M1 Foundation (week 1-2):** project setup, theme tokens, DB schema, cost engine with tests.
 2. **M2 Ingredients and Settings (week 3):** library, conversions, channels.
-3. **M3 Recipes (week 4-5):** builder, sub-recipes, packaging, cycle check.
+3. **M3 Recipes (week 4-5):** builder, sub-recipes, separate per-channel packaging, cycle check.
 4. **M4 Dashboard and What-If (week 6):** margin list, slider, suggested price, impact screen.
 5. **M5 Safety, polish, and localization (week 7-8):** backup/restore, PDF export, onboarding, templates, translations for 5 launch languages, currency and unit tests, pseudo-locale and RTL checks.
 6. **M6 Beta (week 9-10):** 10 real food businesses across at least 3 countries and 3 languages, fix top 5 friction points, Play Store internal testing with localized listings.

@@ -26,7 +26,8 @@ Simple by rule, not by accident. The user is a busy owner, standing in a kitchen
 Margins (home)      Recipes            Ingredients         Settings
  └ dish detail       └ recipe editor     └ ingredient edit    └ Channels and fees
     └ What-if price     └ add item sheet     └ conversions     └ Target and waste
- └ Impact list                               └ price history   └ Backup and restore
+ └ Impact list                               └ price history
+                                            └ Packaging switch
                                                                 └ Language, currency
 ```
 
@@ -61,8 +62,10 @@ First launch: one "Your setup" screen with language, currency, and units, all pr
 ### 4.2 Recipe editor
 
 - Top: name, portions, selling price.
-- Middle: list of items (ingredient, sub-recipe, packaging) with quantity and line cost.
-- Sticky summary bar: **Cost per plate** and **Profit per plate**, updating live.
+- Middle: list of food items (ingredient and sub-recipe) with quantity and line cost.
+- Dishes have a separate **Packaging** section below the food-item list, with a secondary "Add packaging" action. Keep "Add item" as the screen's one primary button.
+- Each packaging line shows its item, quantity per portion, and channel scope chips: All channels or selected channels. Do not show this section for sub-recipes.
+- Sticky summary bar shows **Food cost** and **Packaging cost** separately, plus **Cost per plate** and **Profit per plate** for the selected channel.
 - Primary button: **Add item**, opening a bottom sheet with search plus recent and favourite items first.
 - "More options" row: labor, overhead, notes.
 
@@ -71,7 +74,8 @@ First launch: one "Your setup" screen with language, currency, and units, all pr
 ```
 Selling price        $149
 ──────────○────────────
-Cost per plate       $71
+Food cost            $55
+Packaging            $16   (Delivery)
 Delivery fee         $45   (30%)
 Profit per plate     $33
 Margin               22%  ▼ Low
@@ -80,7 +84,8 @@ Margin               22%  ▼ Low
 [ Use this price ]
 ```
 
-- Slider range: cost to 3x cost. Steps in friendly increments.
+- Show the packaging cost that applies to the selected channel. Dine-in and Delivery may have different costs and suggested prices.
+- Slider range: selected-channel cost to 3x cost. Steps in friendly increments.
 - If the target is impossible: "Delivery fees are too high to reach 65% on this channel."
 
 ### 4.4 Ingredient form
@@ -89,11 +94,20 @@ Fields: Name, Buy by (kg / L / piece), Quantity bought, Price paid, Usable % (wi
 Live line under the form: "Costs $0.18 per usable gram."
 Advanced: unit conversions, price history.
 
-### 4.5 Price change impact
+### 4.5 Packaging library
 
-After saving a new ingredient price: bottom sheet reading "This changes 7 dishes. 2 are now below target." with a list and a "Review" button. Dismissible.
+- The Ingredients tab has a two-option switch: **Ingredients | Packaging**. Do not add a fifth tab.
+- Packaging form fields: name, pack price, pieces per pack, and note. Do not show yield or trimming loss.
+- Show the derived, locale-formatted cost per piece (for example, "Costs 4.50 per piece").
+- Packaging rows support search and favourites. Offer optional starter packaging templates the first time Packaging is opened.
+- Packaging is optional during onboarding and is not part of the 3-step first-dish flow.
+- Saved groups such as a Delivery bundle are deferred to v1.1 and should only be designed after beta feedback requests them.
 
-### 4.6 Onboarding (3 steps, skippable)
+### 4.6 Price change impact
+
+After saving an ingredient or packaging pack price: bottom sheet reading "This changes 7 dishes. 2 are now below target." with a list and a "Review" button. Dismissible. Recalculate affected dish margins with each channel's applicable packaging.
+
+### 4.7 Onboarding (3 steps, skippable)
 
 1. Pick or add 3 ingredients from a starter list.
 2. Build one dish by choosing those ingredients and amounts.
@@ -151,6 +165,7 @@ Each component is built once in `shared/ui` and documented with all states: defa
 - Say "profit per plate", with "margin %" as the secondary number.
 - Say "Usable %", with helper "After trimming, peeling, bones".
 - Say "Waste buffer" for global waste, helper "Spoilage and mistakes".
+- Say "Pack price" and "Pieces per pack"; show cost per piece. Packaging is not affected by the waste buffer.
 - Errors say what to do: "Weight and pieces can't be mixed. Add a conversion, e.g. 1 piece = 60 g." Never "Invalid input".
 - Numbers: locale-aware thousands and decimals, currency symbol first.
 - Keep every label under 3 words where possible. All text lives in i18n files.
@@ -201,6 +216,8 @@ Each component is built once in `shared/ui` and documented with all states: defa
 - [ ] No more than 5 visible fields per form
 - [ ] Status never relies on colour alone
 - [ ] Every number has a unit or currency
+- [ ] Channel-specific packaging appears only in the matching channel's cost and margin
+- [ ] Sub-recipes cannot include packaging
 - [ ] Every empty state has a next action
 - [ ] Works at 130% font size on a 5.5 inch screen
 - [ ] Works with 40% longer text (pseudo-locale) with nothing clipped
