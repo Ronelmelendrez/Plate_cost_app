@@ -223,9 +223,7 @@ export function RecipeItemPickerSheet({
       return;
     }
     onAdd({
-      id:
-        initialItem?.id ??
-        `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      ...(initialItem?.id ? { id: initialItem.id } : {}),
       kind: selected.kind,
       referenceId: selected.id,
       quantity: parsedQuantity.toString(),

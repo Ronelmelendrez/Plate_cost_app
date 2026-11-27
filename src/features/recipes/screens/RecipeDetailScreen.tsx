@@ -372,9 +372,13 @@ export default function RecipeDetailScreen() {
   };
 
   const addItemToDraft = (draft: Omit<RecipeItemDraft, 'id'> & { id?: string }) => {
-    const updated = draft.id
-      ? items.map((item) => (item.id === draft.id ? { ...item, ...draft } : item))
-      : [...items, { ...draft, id: `draft-${Date.now()}-${items.length}` }];
+    const existingIndex = draft.id
+      ? items.findIndex((item) => item.id === draft.id)
+      : -1;
+    const updated =
+      existingIndex >= 0
+        ? items.map((item, index) => (index === existingIndex ? { ...item, ...draft, id: item.id } : item))
+        : [...items, { ...draft, id: draft.id ?? `draft-${Date.now()}-${items.length}` }];
     setItems(updated);
     setFormErrors((current) => ({ ...current, items: undefined }));
     setIsItemPickerOpen(false);
@@ -1040,8 +1044,9 @@ export default function RecipeDetailScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('recipes.addItem')}
+              disabled={!workspace}
               onPress={() => openItemPicker()}
-              className="min-h-12 justify-center px-3">
+              className={`min-h-12 justify-center px-3 ${workspace ? '' : 'opacity-50'}`}>
               <Text className="text-base font-inter-semibold text-brand">{t('recipes.addItem')}</Text>
             </Pressable>
           </View>
