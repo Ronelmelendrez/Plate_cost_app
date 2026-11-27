@@ -23,11 +23,12 @@ export function Button({
       accessibilityLabel={label}
       disabled={disabled}
       onPress={onPress}
-      className={`min-h-14 flex-row items-center justify-center rounded-xl px-4 ${
+      className={`min-h-14 flex-row items-center justify-center rounded-2xl px-4 ${
         isPrimary ? 'bg-brand' : 'border border-line bg-surface'
       } ${disabled ? 'opacity-50' : ''}`}>
       {icon}
-      <Text className={`text-base font-semibold ${isPrimary ? 'text-white' : 'text-ink'}`}>
+      <Text
+        className={`font-inter-semibold text-[15px] ${isPrimary ? 'text-white' : 'text-ink'}`}>
         {label}
       </Text>
     </Pressable>

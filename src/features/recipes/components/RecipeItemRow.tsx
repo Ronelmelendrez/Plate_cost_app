@@ -44,12 +44,12 @@ export function RecipeItemRow({
         onPress={onPress}
         className="min-h-12 flex-1 flex-row items-center justify-between">
         <View className="flex-1 gap-1">
-          <Text className="text-base font-semibold text-ink">{name}</Text>
-          <Text className="text-sm text-muted">
+          <Text className="text-base font-inter-semibold text-ink">{name}</Text>
+          <Text className="font-inter text-sm text-muted">
             {kindLabel} · {item.quantity} {t(`units.${item.unit}`)}
           </Text>
         </View>
-        <Text className="ms-2 text-base font-semibold text-ink">
+        <Text className="ms-2 text-base font-inter-semibold text-ink">
           {lineCost
             ? formatCurrency(lineCost, currency, locale)
             : t('recipes.costUnavailable')}
@@ -60,7 +60,7 @@ export function RecipeItemRow({
         accessibilityLabel={t('recipes.removeItem', { name })}
         onPress={onRemove}
         className="ms-2 min-h-12 min-w-12 items-center justify-center">
-        <Text className="text-sm font-semibold text-muted">{t('recipes.remove')}</Text>
+        <Text className="text-sm font-inter-semibold text-muted">{t('recipes.remove')}</Text>
       </Pressable>
     </View>
   );

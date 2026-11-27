@@ -3,13 +3,7 @@ import { SymbolView } from 'expo-symbols';
 import { useTranslation } from 'react-i18next';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
-import { Colors } from '@shared/theme';
-
-/** Top color of the hero gradient, used for the safe-area strip above it. */
-export const HERO_TOP = '#268F70';
-/** Color the hero gradient ends on; the list fades from it into the page. */
-export const HERO_BOTTOM = '#17564A';
-export const HERO_GRADIENT = [HERO_TOP, Colors.light.tint, HERO_BOTTOM] as const;
+import { Colors, HERO_GRADIENT } from '@shared/theme';
 
 export function DashboardHeader({
   query,

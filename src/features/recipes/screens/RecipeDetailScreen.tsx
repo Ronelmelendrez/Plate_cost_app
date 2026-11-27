@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { getLocales } from 'expo-localization';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -65,7 +66,7 @@ import { getPriceChangeImpact } from '@features/impact/data/impactRepository';
 import { PriceChangeImpactSheet } from '@features/impact/components/PriceChangeImpactSheet';
 import { getAppSettings, type AppSettings, type SalesChannel } from '@features/settings';
 import { Button, TextField } from '@shared/ui';
-import { Colors } from '@shared/theme';
+import { Colors, HERO_GRADIENT, HERO_TOP } from '@shared/theme';
 
 const localeInfo = getLocales()[0];
 const deviceLocale = localeInfo?.languageTag ?? 'en-US';
@@ -749,53 +750,42 @@ export default function RecipeDetailScreen() {
   );
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-bg">
-      <View className="flex-row items-center px-4 pb-3 pt-1">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('recipes.close')}
-          onPress={() => router.back()}
-          className="me-3 min-h-12 min-w-12 items-center justify-center">
-          <SymbolView
-            name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
-            tintColor={Colors.light.text}
-            size={24}
-          />
-        </Pressable>
-        <Text className="flex-1 text-xl font-semibold text-ink">
-          {isNew ? t('recipes.newRecipe') : t('recipes.editRecipe')}
-        </Text>
-      </View>
-
-      <ScrollView
-        className="flex-1"
-        contentContainerClassName="gap-5 px-4 pb-6"
-        keyboardShouldPersistTaps="handled">
-        {formError && isLoadError ? (
+    <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: HERO_TOP }}>
+      <LinearGradient
+        colors={HERO_GRADIENT}
+        style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 }}>
+        <View className="flex-row items-center gap-3">
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t('recipes.retry')}
-            onPress={() => void loadData()}
-            className="min-h-12 justify-center">
-            <Text accessibilityRole="alert" className="text-base text-bad">
-              {formError} {t('recipes.retry')}
-            </Text>
+            accessibilityLabel={t('recipes.close')}
+            onPress={() => router.back()}
+            className="h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/15">
+            <SymbolView
+              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+              tintColor="#FFFFFF"
+              size={22}
+            />
           </Pressable>
-        ) : formError ? (
-          <Text accessibilityRole="alert" className="text-base text-bad">
-            {formError}
+          <Text
+            accessibilityRole="header"
+            numberOfLines={1}
+            className="min-w-0 flex-1 font-inter-extrabold text-[20px] leading-[26px] text-white">
+            {isNew ? t('recipes.newRecipe') : t('recipes.editRecipe')}
           </Text>
-        ) : null}
-        <View className="flex-row gap-2">
+        </View>
+
+        <View className="mt-3 flex-row gap-2">
           {(['dish', 'sub-recipe'] as const).map((recipeType) => {
             const selected = isSubRecipe === (recipeType === 'sub-recipe');
+            const label = t(
+              recipeType === 'dish' ? 'recipes.dishType' : 'recipes.subRecipeType',
+            );
             return (
               <Pressable
+                key={recipeType}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
-                accessibilityLabel={t(
-                  recipeType === 'dish' ? 'recipes.dishType' : 'recipes.subRecipeType',
-                )}
+                accessibilityLabel={label}
                 onPress={() => {
                   const nextIsSubRecipe = recipeType === 'sub-recipe';
                   setIsSubRecipe(nextIsSubRecipe);
@@ -804,18 +794,40 @@ export default function RecipeDetailScreen() {
                     setBatchYieldUnit('portion');
                   }
                 }}
-                key={recipeType}
-                className={`min-h-12 flex-1 items-center justify-center rounded-xl border px-3 ${
-                  selected ? 'border-ink bg-surface' : 'border-line bg-surface'
+                className={`min-h-11 flex-1 items-center justify-center rounded-full border px-3 ${
+                  selected ? 'border-white bg-white' : 'border-white/30 bg-white/15'
                 }`}>
-                <Text className="text-base font-semibold text-ink">
-                  {t(recipeType === 'dish' ? 'recipes.dishType' : 'recipes.subRecipeType')}
+                <Text
+                  className={`font-inter-semibold text-[14px] ${
+                    selected ? 'text-brand' : 'text-white'
+                  }`}>
+                  {label}
                 </Text>
               </Pressable>
             );
           })}
         </View>
+      </LinearGradient>
 
+      <ScrollView
+        className="flex-1 bg-bg"
+        contentContainerClassName="gap-5 px-4 pb-6"
+        keyboardShouldPersistTaps="handled">
+        {formError && isLoadError ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('recipes.retry')}
+            onPress={() => void loadData()}
+            className="min-h-12 justify-center">
+            <Text accessibilityRole="alert" className="font-inter text-base text-bad">
+              {formError} {t('recipes.retry')}
+            </Text>
+          </Pressable>
+        ) : formError ? (
+          <Text accessibilityRole="alert" className="font-inter text-base text-bad">
+            {formError}
+          </Text>
+        ) : null}
         <TextField
           label={t('recipes.name')}
           value={name}
@@ -827,7 +839,7 @@ export default function RecipeDetailScreen() {
         />
         {!isSubRecipe ? (
           <View className="gap-2">
-            <Text className="text-sm font-semibold text-ink">{t('recipes.photo')}</Text>
+            <Text className="text-sm font-inter-semibold text-ink">{t('recipes.photo')}</Text>
             {imageUri ? (
               <Image
                 accessibilityLabel={t('recipes.photo')}
@@ -842,7 +854,7 @@ export default function RecipeDetailScreen() {
                   tintColor={Colors.light.tabIconDefault}
                   size={28}
                 />
-                <Text className="text-sm text-muted">{t('recipes.photo')}</Text>
+                <Text className="font-inter text-sm text-muted">{t('recipes.photo')}</Text>
               </View>
             )}
             <View className="flex-row gap-2">
@@ -854,7 +866,7 @@ export default function RecipeDetailScreen() {
                 className={`min-h-12 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-3 ${
                   isPickingPhoto ? 'opacity-50' : ''
                 }`}>
-                <Text className="text-base font-semibold text-brand">
+                <Text className="text-base font-inter-semibold text-brand">
                   {t(imageUri ? 'recipes.changePhoto' : 'recipes.addPhoto')}
                 </Text>
               </Pressable>
@@ -869,14 +881,14 @@ export default function RecipeDetailScreen() {
                     setPhotoError('');
                   }}
                   className="min-h-12 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-3">
-                  <Text className="text-base font-semibold text-bad">
+                  <Text className="text-base font-inter-semibold text-bad">
                     {t('recipes.removePhoto')}
                   </Text>
                 </Pressable>
               ) : null}
             </View>
             {photoError ? (
-              <Text accessibilityRole="alert" className="text-sm text-bad">
+              <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
                 {photoError}
               </Text>
             ) : null}
@@ -897,7 +909,7 @@ export default function RecipeDetailScreen() {
               error={formErrors.batchYield}
             />
             <View className="gap-2">
-              <Text className="text-sm font-semibold text-ink">{t('recipes.yieldUnit')}</Text>
+              <Text className="text-sm font-inter-semibold text-ink">{t('recipes.yieldUnit')}</Text>
               <View className="flex-row gap-2">
                 {RECIPE_YIELD_UNITS.map((yieldUnit) => (
                   <Pressable
@@ -913,7 +925,7 @@ export default function RecipeDetailScreen() {
                         ? 'border-ink bg-surface'
                         : 'border-line bg-surface'
                     }`}>
-                    <Text className="text-base text-ink">{t(`units.${yieldUnit}`)}</Text>
+                    <Text className="font-inter text-base text-ink">{t(`units.${yieldUnit}`)}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -937,7 +949,7 @@ export default function RecipeDetailScreen() {
 
         {!isSubRecipe ? (
           <View className="gap-2">
-            <Text className="text-base font-semibold text-ink">
+            <Text className="text-base font-inter-semibold text-ink">
               {t('recipes.salesChannels')}
             </Text>
             {workspace?.channels.map((channel) => {
@@ -955,15 +967,15 @@ export default function RecipeDetailScreen() {
                       onPress={() => toggleChannel(channel.id)}
                       className="min-h-12 flex-1 flex-row items-center justify-between">
                       <View className="flex-1 gap-1">
-                        <Text className="text-base font-semibold text-ink">{channel.name}</Text>
-                        <Text className="text-sm text-muted">
+                        <Text className="text-base font-inter-semibold text-ink">{channel.name}</Text>
+                        <Text className="font-inter text-sm text-muted">
                           {t('recipes.channelFeesSummary', {
                             commission: channel.commissionPct,
                             payment: channel.paymentFeePct,
                           })}
                         </Text>
                       </View>
-                      <Text className="ms-3 text-base font-semibold text-brand">
+                      <Text className="ms-3 text-base font-inter-semibold text-brand">
                         {isSelected ? t('settings.on') : t('settings.off')}
                       </Text>
                     </Pressable>
@@ -975,7 +987,7 @@ export default function RecipeDetailScreen() {
                         })}
                         onPress={() => setExpandedChannelPriceId(channel.id)}
                         className="ms-2 min-h-12 justify-center px-2">
-                        <Text className="text-sm font-semibold text-brand">
+                        <Text className="text-sm font-inter-semibold text-brand">
                           {t('settings.edit')}
                         </Text>
                       </Pressable>
@@ -1015,7 +1027,7 @@ export default function RecipeDetailScreen() {
               );
             })}
             {formErrors.channelPrices ? (
-              <Text accessibilityRole="alert" className="text-sm text-bad">
+              <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
                 {formErrors.channelPrices}
               </Text>
             ) : null}
@@ -1024,13 +1036,13 @@ export default function RecipeDetailScreen() {
 
         <View className="gap-2">
           <View className="flex-row items-center justify-between">
-            <Text className="text-base font-semibold text-ink">{t('recipes.items')}</Text>
+            <Text className="text-base font-inter-semibold text-ink">{t('recipes.items')}</Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('recipes.addItem')}
               onPress={() => openItemPicker()}
               className="min-h-12 justify-center px-3">
-              <Text className="text-base font-semibold text-brand">{t('recipes.addItem')}</Text>
+              <Text className="text-base font-inter-semibold text-brand">{t('recipes.addItem')}</Text>
             </Pressable>
           </View>
           {items.length > 0 ? (
@@ -1053,17 +1065,17 @@ export default function RecipeDetailScreen() {
               );
             })
           ) : (
-            <Text className="text-base text-muted">{t('recipes.noItems')}</Text>
+            <Text className="font-inter text-base text-muted">{t('recipes.noItems')}</Text>
           )}
           {formErrors.items ? (
-            <Text accessibilityRole="alert" className="text-sm text-bad">
+            <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
               {formErrors.items}
             </Text>
           ) : null}
         </View>
         {removedItem ? (
           <View className="min-h-12 flex-row items-center justify-between rounded-xl border border-line bg-surface px-3">
-            <Text className="flex-1 text-sm text-ink">
+            <Text className="flex-1 font-inter text-sm text-ink">
               {t('recipes.itemRemoved', { name: resolveItemName(removedItem) })}
             </Text>
             <Pressable
@@ -1071,7 +1083,7 @@ export default function RecipeDetailScreen() {
               accessibilityLabel={t('recipes.undoRemove')}
               onPress={undoRemoveDraftItem}
               className="ms-2 min-h-12 justify-center px-2">
-              <Text className="text-sm font-semibold text-brand">{t('recipes.undoRemove')}</Text>
+              <Text className="text-sm font-inter-semibold text-brand">{t('recipes.undoRemove')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -1083,7 +1095,7 @@ export default function RecipeDetailScreen() {
             accessibilityLabel={t('recipes.moreOptions')}
             onPress={() => setIsMoreOptionsOpen((open) => !open)}
             className="min-h-12 flex-row items-center justify-between">
-            <Text className="text-base font-semibold text-ink">{t('recipes.moreOptions')}</Text>
+            <Text className="text-base font-inter-semibold text-ink">{t('recipes.moreOptions')}</Text>
             <SymbolView
               name={
                 isMoreOptionsOpen
@@ -1121,7 +1133,7 @@ export default function RecipeDetailScreen() {
                 error={formErrors.laborRate}
               />
               <View className="gap-2">
-                <Text className="text-sm font-semibold text-ink">{t('recipes.overhead')}</Text>
+                <Text className="text-sm font-inter-semibold text-ink">{t('recipes.overhead')}</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {(['none', 'flat', 'percent'] as const).map((mode) => (
                     <Pressable
@@ -1135,7 +1147,7 @@ export default function RecipeDetailScreen() {
                           ? 'border-ink bg-surface'
                           : 'border-line bg-surface'
                       }`}>
-                      <Text className="text-sm text-ink">{t(`recipes.${mode}Overhead`)}</Text>
+                      <Text className="font-inter text-sm text-ink">{t(`recipes.${mode}Overhead`)}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1156,14 +1168,14 @@ export default function RecipeDetailScreen() {
                 />
               ) : null}
               <View className="gap-2">
-                <Text className="text-sm font-semibold text-ink">{t('recipes.notes')}</Text>
+                <Text className="text-sm font-inter-semibold text-ink">{t('recipes.notes')}</Text>
                 <TextInput
                   accessibilityLabel={t('recipes.notes')}
                   value={notes}
                   onChangeText={setNotes}
                   multiline
                   textAlignVertical="top"
-                  className="min-h-24 rounded-xl border border-line bg-surface px-3 py-3 text-base text-ink"
+                  className="min-h-24 rounded-xl border border-line bg-surface px-3 py-3 font-inter text-base text-ink"
                 />
               </View>
             </View>
@@ -1192,7 +1204,7 @@ export default function RecipeDetailScreen() {
         locale={locale}
       />
       {costPreview.result && !isSubRecipe && previewPriceMinor === null ? (
-        <Text className="bg-surface px-4 pb-2 text-sm text-muted">
+        <Text className="bg-surface px-4 pb-2 font-inter text-sm text-muted">
           {t('recipes.noPriceYet')}
         </Text>
       ) : null}

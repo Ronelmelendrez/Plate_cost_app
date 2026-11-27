@@ -31,9 +31,9 @@ export function TextField({
 }: TextFieldProps) {
   return (
     <View className="gap-2">
-      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <Text className="font-inter-semibold text-sm text-ink">{label}</Text>
       <View className="min-h-12 flex-row items-center rounded-xl border border-line bg-surface px-3">
-        {prefix ? <Text className="me-2 text-base text-muted">{prefix}</Text> : null}
+        {prefix ? <Text className="font-inter me-2 text-base text-muted">{prefix}</Text> : null}
         <TextInput
           accessibilityLabel={accessibilityLabel ?? label}
           value={value}
@@ -43,17 +43,17 @@ export function TextField({
           selectTextOnFocus={keyboardType === 'decimal-pad'}
           placeholder={placeholder}
           placeholderTextColor={Colors.light.tabIconDefault}
-          className="min-h-12 flex-1 p-0 text-base text-ink"
+          className="min-h-12 flex-1 p-0 font-inter text-base text-ink"
           returnKeyType="done"
         />
-        {suffix ? <Text className="ms-2 text-base text-muted">{suffix}</Text> : null}
+        {suffix ? <Text className="font-inter ms-2 text-base text-muted">{suffix}</Text> : null}
       </View>
       {error ? (
-        <Text accessibilityRole="alert" className="text-sm text-bad">
+        <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
           {error}
         </Text>
       ) : helperText ? (
-        <Text className="text-sm text-muted">{helperText}</Text>
+        <Text className="font-inter text-sm text-muted">{helperText}</Text>
       ) : null}
     </View>
   );

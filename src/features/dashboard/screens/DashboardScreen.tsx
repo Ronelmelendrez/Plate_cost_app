@@ -21,11 +21,7 @@ import {
   snoozeBackupReminder,
 } from '@features/backup';
 import { getRecipeWorkspace } from '@features/recipes';
-import {
-  DashboardHeader,
-  HERO_BOTTOM,
-  HERO_TOP,
-} from '@features/dashboard/components/DashboardHeader';
+import { DashboardHeader } from '@features/dashboard/components/DashboardHeader';
 import { MarginDishRow } from '@features/dashboard/components/MarginDishRow';
 import {
   buildMarginDashboardRows,
@@ -38,7 +34,7 @@ import {
   type MarginDashboardFilter,
 } from '@features/dashboard/domain/marginFilters';
 import { saveTargetMargin, type AppSettings } from '@features/settings';
-import { Colors } from '@shared/theme';
+import { Colors, HERO_BOTTOM, HERO_TOP } from '@shared/theme';
 
 type RecipeWorkspace = Awaited<ReturnType<typeof getRecipeWorkspace>>;
 

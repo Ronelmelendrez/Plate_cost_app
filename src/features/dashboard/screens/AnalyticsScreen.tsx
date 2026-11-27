@@ -13,7 +13,6 @@ import { currencyFractionDigits } from '@core/costing/money';
 import { createDrizzleClient } from '@core/db/client';
 import { getRecipeWorkspace } from '@features/recipes';
 import { MarginDishRow } from '@features/dashboard/components/MarginDishRow';
-import { HERO_BOTTOM, HERO_TOP } from '@features/dashboard/components/DashboardHeader';
 import {
   buildMarginDashboardRows,
   getMarginStatus,
@@ -21,7 +20,7 @@ import {
   type MarginDashboardRow,
 } from '@features/dashboard/domain/marginDashboard';
 import { summarizeMarginDashboardRows } from '@features/dashboard/domain/marginAnalytics';
-import { Colors } from '@shared/theme';
+import { Colors, HERO_BOTTOM, HERO_TOP } from '@shared/theme';
 
 type RecipeWorkspace = Awaited<ReturnType<typeof getRecipeWorkspace>>;
 

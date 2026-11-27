@@ -39,38 +39,38 @@ export function RecipeCostSummary({
   return (
     <View className="gap-2 border-t border-line bg-surface px-4 py-3">
       {error ? (
-        <Text accessibilityRole="alert" className="text-sm text-bad">
+        <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
           {error}
         </Text>
       ) : batchCost && costPerUnit ? (
         <View className="flex-row items-start justify-between gap-3">
           <View className="flex-1 gap-1">
-            <Text className="text-sm text-muted">{t('recipes.costPerBatch')}</Text>
-            <Text className="text-base font-semibold text-ink">
+            <Text className="font-inter text-sm text-muted">{t('recipes.costPerBatch')}</Text>
+            <Text className="text-base font-inter-semibold text-ink">
               {formatCurrency(batchCost, currency, locale)}
             </Text>
           </View>
           <View className="flex-1 items-end gap-1">
-            <Text className="text-sm text-muted">
+            <Text className="font-inter text-sm text-muted">
               {isSubRecipe ? t('recipes.costPerYieldUnit') : t('recipes.costPerPortion')}
             </Text>
-            <Text className="text-base font-semibold text-ink">
+            <Text className="text-base font-inter-semibold text-ink">
               {formatCurrency(costPerUnit, currency, locale)}
             </Text>
           </View>
         </View>
       ) : (
-        <Text className="text-base text-muted">
+        <Text className="font-inter text-base text-muted">
           {isSubRecipe ? t('recipes.addItemsForBatchCost') : t('recipes.addItemsForCost')}
         </Text>
       )}
       {pdfError ? (
-        <Text accessibilityRole="alert" className="text-sm text-bad">
+        <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
           {pdfError}
         </Text>
       ) : null}
       {!isSubRecipe && profitPerPortion ? (
-        <Text className="text-sm font-semibold text-ink">
+        <Text className="text-sm font-inter-semibold text-ink">
           {t('recipes.profitPerPortionForChannel', {
             channel: profitChannelName ?? '',
           })}
@@ -85,7 +85,7 @@ export function RecipeCostSummary({
             accessibilityLabel={t('pricing.openWhatIf')}
             onPress={() => router.push(`/recipe/${recipeId}/price`)}
             className="min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4">
-            <Text className="text-base font-semibold text-brand">
+            <Text className="text-base font-inter-semibold text-brand">
               {t('pricing.openWhatIf')}
             </Text>
           </Pressable>
@@ -97,7 +97,7 @@ export function RecipeCostSummary({
             className={`min-h-12 items-center justify-center rounded-xl border border-line bg-surface px-4 ${
               isExportingPdf ? 'opacity-50' : ''
             }`}>
-            <Text className="text-base font-semibold text-brand">
+            <Text className="text-base font-inter-semibold text-brand">
               {t('pricing.exportPdf')}
             </Text>
           </Pressable>

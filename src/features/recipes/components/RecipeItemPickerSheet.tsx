@@ -290,7 +290,7 @@ export function RecipeItemPickerSheet({
       <View className="flex-1 justify-end bg-black/30">
         <SafeAreaView edges={['bottom']} className="max-h-[90%] rounded-t-2xl bg-bg">
           <View className="flex-row items-center justify-between border-b border-line px-4 py-3">
-            <Text className="text-xl font-semibold text-ink">
+            <Text className="text-xl font-inter-semibold text-ink">
               {isCreatingPackaging ? t('recipes.createPackaging') : t('recipes.addItem')}
             </Text>
             <Pressable
@@ -298,7 +298,7 @@ export function RecipeItemPickerSheet({
               accessibilityLabel={t('recipes.close')}
               onPress={onClose}
               className="min-h-12 min-w-12 items-center justify-center">
-              <Text className="text-base text-ink">{t('recipes.close')}</Text>
+              <Text className="font-inter text-base text-ink">{t('recipes.close')}</Text>
             </Pressable>
           </View>
 
@@ -321,7 +321,7 @@ export function RecipeItemPickerSheet({
                 suffix={priceAffixes.suffix}
               />
               {error ? (
-                <Text accessibilityRole="alert" className="text-sm text-bad">
+                <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
                   {error}
                 </Text>
               ) : null}
@@ -335,7 +335,7 @@ export function RecipeItemPickerSheet({
                 accessibilityLabel={t('recipes.close')}
                 onPress={() => setIsCreatingPackaging(false)}
                 className="min-h-12 items-center justify-center">
-                <Text className="text-base text-muted">{t('recipes.close')}</Text>
+                <Text className="font-inter text-base text-muted">{t('recipes.close')}</Text>
               </Pressable>
             </ScrollView>
           ) : (
@@ -355,7 +355,7 @@ export function RecipeItemPickerSheet({
                     className={`min-h-12 flex-1 items-center justify-center border-b-2 px-2 ${
                       kind === tabKind ? 'border-brand' : 'border-transparent'
                     }`}>
-                    <Text className="text-center text-sm font-semibold text-ink">
+                    <Text className="text-center text-sm font-inter-semibold text-ink">
                       {tabLabels[tabKind]}
                     </Text>
                   </Pressable>
@@ -368,12 +368,12 @@ export function RecipeItemPickerSheet({
                   onChangeText={setQuery}
                   placeholder={t('recipes.itemSearch')}
                   placeholderTextColor={Colors.light.tabIconDefault}
-                  className="min-h-12 flex-1 p-0 text-base text-ink"
+                  className="min-h-12 flex-1 p-0 font-inter text-base text-ink"
                 />
               </View>
               <ScrollView className="max-h-56 px-4" keyboardShouldPersistTaps="handled">
                 {visibleOptions.length === 0 ? (
-                  <Text className="py-4 text-base text-muted">
+                  <Text className="font-inter py-4 text-base text-muted">
                     {kind === 'ingredient'
                       ? t('recipes.noIngredients')
                       : kind === 'recipe'
@@ -395,8 +395,8 @@ export function RecipeItemPickerSheet({
                           ? 'bg-surface'
                           : ''
                       }`}>
-                      <Text className="flex-1 text-base text-ink">{option.name}</Text>
-                      <Text className="ms-2 text-sm text-muted">
+                      <Text className="flex-1 font-inter text-base text-ink">{option.name}</Text>
+                      <Text className="ms-2 font-inter text-sm text-muted">
                         {t(`units.${option.defaultUnit}`)}
                       </Text>
                     </Pressable>
@@ -412,16 +412,16 @@ export function RecipeItemPickerSheet({
                     setError('');
                   }}
                   className="mx-4 mt-2 min-h-12 items-center justify-center rounded-xl border border-line bg-surface">
-                  <Text className="text-base font-semibold text-ink">
+                  <Text className="text-base font-inter-semibold text-ink">
                     {t('recipes.createPackaging')}
                   </Text>
                 </Pressable>
               ) : null}
               {selected ? (
                 <View className="gap-3 px-4 pb-4 pt-3">
-                  <Text className="text-sm font-semibold text-ink">{selected.name}</Text>
+                  <Text className="text-sm font-inter-semibold text-ink">{selected.name}</Text>
                   {selectedPrice !== undefined ? (
-                    <Text className="text-sm text-muted">
+                    <Text className="font-inter text-sm text-muted">
                       {formatCurrency(
                         new Decimal(selectedPrice).div(new Decimal(10).pow(fractionDigits)),
                         currency,
@@ -457,7 +457,7 @@ export function RecipeItemPickerSheet({
                               ? 'border-ink bg-surface'
                               : 'border-line bg-surface'
                           }`}>
-                          <Text className="text-sm text-ink">
+                          <Text className="font-inter text-sm text-ink">
                             {t(`units.${availableUnit}`)}
                           </Text>
                         </Pressable>
@@ -465,7 +465,7 @@ export function RecipeItemPickerSheet({
                     </ScrollView>
                   </View>
                   {error ? (
-                    <Text accessibilityRole="alert" className="text-sm text-bad">
+                    <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
                       {error}
                     </Text>
                   ) : null}
