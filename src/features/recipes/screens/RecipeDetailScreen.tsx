@@ -1,22 +1,26 @@
-import { Decimal } from 'decimal.js';
-import { getLocales } from 'expo-localization';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
-import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Decimal } from "decimal.js";
+import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
+import { getLocales } from "expo-localization";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useSQLiteContext } from "expo-sqlite";
+import { SymbolView } from "expo-symbols";
+import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  Pressable,
   Image,
+  Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { useSQLiteContext } from 'expo-sqlite';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
+import { calculateChannelPricing } from "@core/costing/channelPricing";
 import {
   calculateRecipeCost,
   InvalidPackagingOnSubRecipeError,
@@ -25,7 +29,8 @@ import {
   RecipeCycleError,
   type RecipeCostInput,
   type RecipeCostLine,
-} from '@core/costing/costEngine';
+} from "@core/costing/costEngine";
+import type { RecipeEdge } from "@core/costing/cycleCheck";
 import {
   currencyAffixes,
   currencyFractionDigits,
@@ -33,49 +38,54 @@ import {
   formatDecimalInput,
   parseDecimal,
   toMinorUnits,
-} from '@core/costing/money';
+} from "@core/costing/money";
 import {
+  RECIPE_YIELD_UNITS,
   type BaseUnit,
   type ConversionUnit,
-  RECIPE_YIELD_UNITS,
   type RecipeYieldUnit,
-} from '@core/costing/units';
-import { calculateChannelPricing } from '@core/costing/channelPricing';
-import type { RecipeEdge } from '@core/costing/cycleCheck';
-import { createDrizzleClient } from '@core/db/client';
+} from "@core/costing/units";
+import { createDrizzleClient } from "@core/db/client";
 import {
   buildRecipeCostSheetHtml,
   sharePdfFile,
   SharingUnavailableError,
-} from '@features/backup';
-import type { Ingredient } from '@features/ingredients/data/ingredientRepository';
+} from "@features/backup";
+import { PriceChangeImpactSheet } from "@features/impact/components/PriceChangeImpactSheet";
+import type { PriceChangeImpactReport } from "@features/impact/data/impactRepository";
+import { getPriceChangeImpact } from "@features/impact/data/impactRepository";
+import type { Ingredient } from "@features/ingredients/data/ingredientRepository";
+import {
+  PackagingPicker,
+  PackagingRow,
+  type PackagingItem,
+  type RecipePackagingDraft,
+} from "@features/packaging";
+import { RecipeCostSummary } from "@features/recipes/components/RecipeCostSummary";
+import { RecipeItemPickerSheet } from "@features/recipes/components/RecipeItemPickerSheet";
+import { RecipeItemRow } from "@features/recipes/components/RecipeItemRow";
+import {
+  persistRecipeImage,
+  removeStoredRecipeImage,
+} from "@features/recipes/data/recipeImages";
 import {
   getRecipeEditorData,
   getRecipeWorkspace,
   saveRecipe,
   type Recipe,
   type RecipeItemDraft,
-} from '@features/recipes/data/recipeRepository';
+} from "@features/recipes/data/recipeRepository";
 import {
-  PackagingPicker,
-  PackagingRow,
-  type PackagingItem,
-  type RecipePackagingDraft,
-} from '@features/packaging';
-import { persistRecipeImage, removeStoredRecipeImage } from '@features/recipes/data/recipeImages';
-import { RecipeCostSummary } from '@features/recipes/components/RecipeCostSummary';
-import { RecipeItemPickerSheet } from '@features/recipes/components/RecipeItemPickerSheet';
-import { RecipeItemRow } from '@features/recipes/components/RecipeItemRow';
-import type { PriceChangeImpactReport } from '@features/impact/data/impactRepository';
-import { getPriceChangeImpact } from '@features/impact/data/impactRepository';
-import { PriceChangeImpactSheet } from '@features/impact/components/PriceChangeImpactSheet';
-import { getAppSettings, type AppSettings, type SalesChannel } from '@features/settings';
-import { Button, TextField } from '@shared/ui';
-import { Colors, HERO_GRADIENT, HERO_TOP } from '@shared/theme';
+  getAppSettings,
+  type AppSettings,
+  type SalesChannel,
+} from "@features/settings";
+import { Colors, HERO_GRADIENT, HERO_TOP } from "@shared/theme";
+import { Button, TextField } from "@shared/ui";
 
 const localeInfo = getLocales()[0];
-const deviceLocale = localeInfo?.languageTag ?? 'en-US';
-const deviceCurrency = localeInfo?.currencyCode ?? 'USD';
+const deviceLocale = localeInfo?.languageTag ?? "en-US";
+const deviceCurrency = localeInfo?.currencyCode ?? "USD";
 
 interface RecipeWorkspace {
   ingredients: Ingredient[];
@@ -106,13 +116,13 @@ interface FormErrors {
 }
 
 function isUnitMismatch(error: unknown) {
-  return error instanceof Error && error.name === 'UnitMismatchError';
+  return error instanceof Error && error.name === "UnitMismatchError";
 }
 
 export default function RecipeDetailScreen() {
   const { id, type } = useLocalSearchParams<{ id: string; type?: string }>();
-  const isNew = id === 'new';
-  const initialSubRecipe = isNew && type === 'sub-recipe';
+  const isNew = id === "new";
+  const initialSubRecipe = isNew && type === "sub-recipe";
   const sqlite = useSQLiteContext();
   const database = useMemo(() => createDrizzleClient(sqlite), [sqlite]);
   const { t } = useTranslation();
@@ -120,47 +130,56 @@ export default function RecipeDetailScreen() {
 
   const [workspace, setWorkspace] = useState<RecipeWorkspace | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [savedImageUri, setSavedImageUri] = useState<string | null>(null);
-  const [pendingPhoto, setPendingPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
-  const [photoError, setPhotoError] = useState('');
+  const [pendingPhoto, setPendingPhoto] =
+    useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [photoError, setPhotoError] = useState("");
   const [isPickingPhoto, setIsPickingPhoto] = useState(false);
   const [isSubRecipe, setIsSubRecipe] = useState(initialSubRecipe);
-  const [portions, setPortions] = useState('1');
-  const [batchYieldQuantity, setBatchYieldQuantity] = useState('1');
-  const [batchYieldUnit, setBatchYieldUnit] = useState<RecipeYieldUnit>('portion');
-  const [channelPriceValues, setChannelPriceValues] = useState<Record<string, string>>({});
+  const [portions, setPortions] = useState("1");
+  const [batchYieldQuantity, setBatchYieldQuantity] = useState("1");
+  const [batchYieldUnit, setBatchYieldUnit] =
+    useState<RecipeYieldUnit>("portion");
+  const [channelPriceValues, setChannelPriceValues] = useState<
+    Record<string, string>
+  >({});
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
-  const [expandedChannelPriceId, setExpandedChannelPriceId] = useState<string>();
+  const [expandedChannelPriceId, setExpandedChannelPriceId] =
+    useState<string>();
   const [items, setItems] = useState<RecipeItemDraft[]>([]);
   const [packaging, setPackaging] = useState<RecipePackagingDraft[]>([]);
-  const [notes, setNotes] = useState('');
-  const [laborMinutes, setLaborMinutes] = useState('0');
-  const [laborRate, setLaborRate] = useState('0');
-  const [overheadMode, setOverheadMode] = useState<'none' | 'flat' | 'percent'>('none');
-  const [overheadValue, setOverheadValue] = useState('0');
+  const [notes, setNotes] = useState("");
+  const [laborMinutes, setLaborMinutes] = useState("0");
+  const [laborRate, setLaborRate] = useState("0");
+  const [overheadMode, setOverheadMode] = useState<"none" | "flat" | "percent">(
+    "none",
+  );
+  const [overheadValue, setOverheadValue] = useState("0");
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [isItemPickerOpen, setIsItemPickerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RecipeItemDraft>();
   const [isPackagingPickerOpen, setIsPackagingPickerOpen] = useState(false);
-  const [editingPackaging, setEditingPackaging] = useState<RecipePackagingDraft>();
+  const [editingPackaging, setEditingPackaging] =
+    useState<RecipePackagingDraft>();
   const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [formError, setFormError] = useState('');
+  const [formError, setFormError] = useState("");
   const [isLoadError, setIsLoadError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [pdfError, setPdfError] = useState('');
+  const [pdfError, setPdfError] = useState("");
   const [isReady, setIsReady] = useState(false);
   const [removedItem, setRemovedItem] = useState<RecipeItemDraft>();
-  const [impactReport, setImpactReport] = useState<PriceChangeImpactReport | null>(null);
+  const [impactReport, setImpactReport] =
+    useState<PriceChangeImpactReport | null>(null);
   const locale = settings?.locale ?? deviceLocale;
   const currency = settings?.currencyCode ?? deviceCurrency;
   const fractionDigits = currencyFractionDigits(currency, locale);
   const priceAffixes = currencyAffixes(currency, locale);
 
   const loadData = useCallback(async () => {
-    setFormError('');
+    setFormError("");
     setIsLoadError(false);
     try {
       const currentSettings = await getAppSettings(database);
@@ -176,15 +195,20 @@ export default function RecipeDetailScreen() {
         setImageUri(null);
         setSavedImageUri(null);
         setPendingPhoto(null);
-        const initialChannel = data.channels.find((channel) => channel.id === 'dine-in') ??
+        const initialChannel =
+          data.channels.find((channel) => channel.id === "dine-in") ??
           data.channels[0];
         setSelectedChannelIds(initialChannel ? [initialChannel.id] : []);
         setChannelPriceValues({});
         setExpandedChannelPriceId(initialChannel?.id);
       } else {
-        const data = await getRecipeEditorData(database, id, currentFractionDigits);
+        const data = await getRecipeEditorData(
+          database,
+          id,
+          currentFractionDigits,
+        );
         if (!data) {
-          setFormError(t('recipes.recipeLoadError'));
+          setFormError(t("recipes.recipeLoadError"));
           setIsLoadError(true);
           return;
         }
@@ -197,7 +221,12 @@ export default function RecipeDetailScreen() {
             ? data.channelPrices
             : data.recipe.sellingPriceMinor === null
               ? []
-              : [{ channelId: 'dine-in', priceMinor: data.recipe.sellingPriceMinor }];
+              : [
+                  {
+                    channelId: "dine-in",
+                    priceMinor: data.recipe.sellingPriceMinor,
+                  },
+                ];
         setSelectedChannelIds(storedPrices.map((price) => price.channelId));
         setChannelPriceValues(
           Object.fromEntries(
@@ -217,7 +246,7 @@ export default function RecipeDetailScreen() {
         setBatchYieldUnit(data.recipe.batchYieldUnit);
         setItems(data.items);
         setPackaging(data.packaging);
-        setNotes(data.recipe.notes ?? '');
+        setNotes(data.recipe.notes ?? "");
         setLaborMinutes(data.recipe.laborMinutes);
         setLaborRate(
           new Decimal(data.recipe.laborRateMinor)
@@ -229,8 +258,8 @@ export default function RecipeDetailScreen() {
       }
       setIsReady(true);
     } catch (loadError) {
-      console.error('Unable to load recipe builder data.', loadError);
-      setFormError(t('recipes.loadError'));
+      console.error("Unable to load recipe builder data.", loadError);
+      setFormError(t("recipes.loadError"));
       setIsLoadError(true);
     }
   }, [database, id, isNew, t]);
@@ -253,18 +282,25 @@ export default function RecipeDetailScreen() {
         const base = {
           id: item.id,
           kind: item.kind,
-          name: '',
+          name: "",
           quantity: item.quantity,
           unit: item.unit,
         };
-        if (item.kind === 'ingredient') {
-          const ingredient = workspace.ingredients.find((candidate) => candidate.id === item.referenceId);
+        if (item.kind === "ingredient") {
+          const ingredient = workspace.ingredients.find(
+            (candidate) => candidate.id === item.referenceId,
+          );
           if (!ingredient) {
-            return { ...base, kind: 'ingredient', name: '', ingredient: undefined };
+            return {
+              ...base,
+              kind: "ingredient",
+              name: "",
+              ingredient: undefined,
+            };
           }
           return {
             ...base,
-            kind: 'ingredient',
+            kind: "ingredient",
             name: ingredient.name,
             ingredient: {
               id: ingredient.id,
@@ -273,15 +309,19 @@ export default function RecipeDetailScreen() {
               purchaseQuantity: ingredient.purchaseQuantity,
               purchasePriceMinor: ingredient.purchasePriceMinor,
               usableYieldPct: ingredient.usableYieldPct,
-              conversions: workspace.conversionsByIngredient.get(ingredient.id) ?? [],
+              conversions:
+                workspace.conversionsByIngredient.get(ingredient.id) ?? [],
             },
           };
         }
         const child = recipeInputs.get(item.referenceId);
         return {
           ...base,
-          kind: 'recipe',
-          name: workspace.recipes.find((candidate) => candidate.id === item.referenceId)?.name ?? '',
+          kind: "recipe",
+          name:
+            workspace.recipes.find(
+              (candidate) => candidate.id === item.referenceId,
+            )?.name ?? "",
           detail: child,
         };
       });
@@ -301,13 +341,17 @@ export default function RecipeDetailScreen() {
       });
 
       const recipe: RecipeCostInput = {
-        id: isNew ? 'draft-recipe' : id,
+        id: isNew ? "draft-recipe" : id,
         isSubRecipe,
         portions: Number(portions),
         batchYieldQuantity,
         batchYieldUnit,
         laborMinutes,
-        laborRateMinor: toMinorUnits(parseDecimal(laborRate, locale) ?? new Decimal(0), fractionDigits) ?? 0,
+        laborRateMinor:
+          toMinorUnits(
+            parseDecimal(laborRate, locale) ?? new Decimal(0),
+            fractionDigits,
+          ) ?? 0,
         overheadMode,
         overheadValue,
         channelIds: workspace.channels.map((channel) => channel.id),
@@ -325,22 +369,22 @@ export default function RecipeDetailScreen() {
       };
     } catch (costError) {
       if (isUnitMismatch(costError)) {
-        return { result: undefined, error: t('recipes.unitMismatch') };
+        return { result: undefined, error: t("recipes.unitMismatch") };
       }
       if (costError instanceof RecipeCycleError) {
-        return { result: undefined, error: t('recipes.cycleError') };
+        return { result: undefined, error: t("recipes.cycleError") };
       }
       if (costError instanceof InvalidSubRecipeError) {
-        return { result: undefined, error: t('recipes.invalidSubRecipe') };
+        return { result: undefined, error: t("recipes.invalidSubRecipe") };
       }
       if (costError instanceof InvalidPackagingOnSubRecipeError) {
-        return { result: undefined, error: t('packaging.subRecipeNotAllowed') };
+        return { result: undefined, error: t("packaging.subRecipeNotAllowed") };
       }
       if (costError instanceof MissingRecipeReferenceError) {
-        return { result: undefined, error: t('recipes.missingItem') };
+        return { result: undefined, error: t("recipes.missingItem") };
       }
-      console.error('Unable to calculate recipe cost.', costError);
-      return { result: undefined, error: t('recipes.costError') };
+      console.error("Unable to calculate recipe cost.", costError);
+      return { result: undefined, error: t("recipes.costError") };
     }
   }, [
     batchYieldQuantity,
@@ -364,7 +408,7 @@ export default function RecipeDetailScreen() {
   const previewChannel = selectedChannelIds
     .map((channelId) => ({
       channel: workspace?.channels.find((channel) => channel.id === channelId),
-      price: parseDecimal(channelPriceValues[channelId] ?? '', locale),
+      price: parseDecimal(channelPriceValues[channelId] ?? "", locale),
     }))
     .find((entry) => entry.channel && entry.price?.gt(0));
   const previewPriceMinor = previewChannel?.price
@@ -377,10 +421,11 @@ export default function RecipeDetailScreen() {
     previewPriceMinor !== null &&
     settings
       ? calculateChannelPricing({
-        costPerPortion: costPreview.result.foodCostPerPortion.plus(
-          costPreview.result.packagingCostByChannel[previewChannel.channel.id] ??
-            new Decimal(0),
-        ),
+          costPerPortion: costPreview.result.foodCostPerPortion.plus(
+            costPreview.result.packagingCostByChannel[
+              previewChannel.channel.id
+            ] ?? new Decimal(0),
+          ),
           priceMinor: previewPriceMinor,
           fractionDigits,
           commissionPct: previewChannel.channel.commissionPct,
@@ -396,14 +441,21 @@ export default function RecipeDetailScreen() {
     setIsItemPickerOpen(true);
   };
 
-  const addItemToDraft = (draft: Omit<RecipeItemDraft, 'id'> & { id?: string }) => {
+  const addItemToDraft = (
+    draft: Omit<RecipeItemDraft, "id"> & { id?: string },
+  ) => {
     const existingIndex = draft.id
       ? items.findIndex((item) => item.id === draft.id)
       : -1;
     const updated =
       existingIndex >= 0
-        ? items.map((item, index) => (index === existingIndex ? { ...item, ...draft, id: item.id } : item))
-        : [...items, { ...draft, id: draft.id ?? `draft-${Date.now()}-${items.length}` }];
+        ? items.map((item, index) =>
+            index === existingIndex ? { ...item, ...draft, id: item.id } : item,
+          )
+        : [
+            ...items,
+            { ...draft, id: draft.id ?? `draft-${Date.now()}-${items.length}` },
+          ];
     setItems(updated);
     setFormErrors((current) => ({ ...current, items: undefined }));
     setIsItemPickerOpen(false);
@@ -419,7 +471,9 @@ export default function RecipeDetailScreen() {
     setPackaging((current) => {
       const existingIndex = current.findIndex((entry) => entry.id === line.id);
       return existingIndex >= 0
-        ? current.map((entry, index) => (index === existingIndex ? line : entry))
+        ? current.map((entry, index) =>
+            index === existingIndex ? line : entry,
+          )
         : [...current, line];
     });
     setIsPackagingPickerOpen(false);
@@ -429,7 +483,9 @@ export default function RecipeDetailScreen() {
   const toggleChannel = (channelId: string) => {
     const isSelected = selectedChannelIds.includes(channelId);
     setSelectedChannelIds((current) =>
-      isSelected ? current.filter((id) => id !== channelId) : [...current, channelId],
+      isSelected
+        ? current.filter((id) => id !== channelId)
+        : [...current, channelId],
     );
     setExpandedChannelPriceId((current) =>
       isSelected ? (current === channelId ? undefined : current) : channelId,
@@ -438,11 +494,11 @@ export default function RecipeDetailScreen() {
   };
 
   const pickDishPhoto = async () => {
-    setPhotoError('');
+    setPhotoError("");
     setIsPickingPhoto(true);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -450,14 +506,14 @@ export default function RecipeDetailScreen() {
       if (!result.canceled) {
         const selectedPhoto = result.assets[0];
         if (!selectedPhoto) {
-          throw new Error('The photo picker returned no image.');
+          throw new Error("The photo picker returned no image.");
         }
         setPendingPhoto(selectedPhoto);
         setImageUri(selectedPhoto.uri);
       }
     } catch (pickerError) {
-      console.error('Unable to select recipe photo.', pickerError);
-      setPhotoError(t('recipes.photoPickError'));
+      console.error("Unable to select recipe photo.", pickerError);
+      setPhotoError(t("recipes.photoPickError"));
     } finally {
       setIsPickingPhoto(false);
     }
@@ -474,7 +530,7 @@ export default function RecipeDetailScreen() {
     const channelPriceDrafts: { channelId: string; priceMinor: number }[] = [];
 
     if (!parsedName) {
-      errors.name = t('recipes.nameRequired');
+      errors.name = t("recipes.nameRequired");
     }
     if (
       !isSubRecipe &&
@@ -483,50 +539,60 @@ export default function RecipeDetailScreen() {
         parsedPortions.lt(1) ||
         !Number.isSafeInteger(parsedPortions.toNumber()))
     ) {
-      errors.portions = t('recipes.portionsRequired');
+      errors.portions = t("recipes.portionsRequired");
     }
     if (isSubRecipe && (!parsedYield || parsedYield.lte(0))) {
-      errors.batchYield = t('recipes.yieldRequired');
+      errors.batchYield = t("recipes.yieldRequired");
     }
     if (!isSubRecipe && selectedChannelIds.length === 0) {
-      errors.channelPrices = t('recipes.channelRequired');
+      errors.channelPrices = t("recipes.channelRequired");
     }
     if (!isSubRecipe) {
       for (const channelId of selectedChannelIds) {
-        const price = parseDecimal(channelPriceValues[channelId] ?? '', locale);
-        const priceMinor = price?.gt(0) ? toMinorUnits(price, fractionDigits) : null;
+        const price = parseDecimal(channelPriceValues[channelId] ?? "", locale);
+        const priceMinor = price?.gt(0)
+          ? toMinorUnits(price, fractionDigits)
+          : null;
         if (priceMinor === null) {
           errors.channelPrices = price?.gt(0)
-            ? t('recipes.pricePrecision', { digits: fractionDigits, currency })
-            : t('recipes.channelPriceRequired');
+            ? t("recipes.pricePrecision", { digits: fractionDigits, currency })
+            : t("recipes.channelPriceRequired");
           break;
         }
         channelPriceDrafts.push({ channelId, priceMinor });
       }
     }
     if (!parsedLaborMinutes || parsedLaborMinutes.lt(0)) {
-      errors.laborMinutes = t('recipes.advancedNumberError');
+      errors.laborMinutes = t("recipes.advancedNumberError");
     }
-    if (!parsedLaborRate || parsedLaborRate.lt(0) || toMinorUnits(parsedLaborRate, fractionDigits) === null) {
-      errors.laborRate = t('recipes.advancedNumberError');
+    if (
+      !parsedLaborRate ||
+      parsedLaborRate.lt(0) ||
+      toMinorUnits(parsedLaborRate, fractionDigits) === null
+    ) {
+      errors.laborRate = t("recipes.advancedNumberError");
     }
-    if (!parsedOverhead || parsedOverhead.lt(0) || (overheadMode === 'percent' && parsedOverhead.gt(100))) {
-      errors.overhead = t('recipes.advancedNumberError');
+    if (
+      !parsedOverhead ||
+      parsedOverhead.lt(0) ||
+      (overheadMode === "percent" && parsedOverhead.gt(100))
+    ) {
+      errors.overhead = t("recipes.advancedNumberError");
     }
     if (items.some((item) => !parseDecimal(item.quantity, locale)?.gt(0))) {
-      errors.items = t('recipes.itemRequired');
+      errors.items = t("recipes.itemRequired");
     }
     if (
       packaging.some(
         (line) =>
           !parseDecimal(line.quantityPerPortion, locale)?.gt(0) ||
-          (line.appliesTo === 'selected' && line.channelIds.length === 0),
+          (line.appliesTo === "selected" && line.channelIds.length === 0),
       )
     ) {
-      errors.items = t('packaging.lineRequired');
+      errors.items = t("packaging.lineRequired");
     }
     if (isSubRecipe && packaging.length > 0) {
-      setFormError(t('packaging.removeBeforeSubRecipe'));
+      setFormError(t("packaging.removeBeforeSubRecipe"));
       return;
     }
 
@@ -544,7 +610,7 @@ export default function RecipeDetailScreen() {
         (recipe) => recipe.id === id,
       );
       if (!workspace || !previousSubRecipeInput) {
-        setFormError(t('recipes.recipeLoadError'));
+        setFormError(t("recipes.recipeLoadError"));
         return;
       }
       try {
@@ -555,16 +621,19 @@ export default function RecipeDetailScreen() {
           workspace.unitSizes,
         ).foodCostPerYieldUnit;
       } catch (costError) {
-        console.error('Unable to calculate the existing sub-recipe cost.', costError);
-        setFormError(t('recipes.costError'));
+        console.error(
+          "Unable to calculate the existing sub-recipe cost.",
+          costError,
+        );
+        setFormError(t("recipes.costError"));
         return;
       }
     }
 
     setIsSaving(true);
-    setFormError('');
+    setFormError("");
     setIsLoadError(false);
-    setPhotoError('');
+    setPhotoError("");
     let newlyPersistedImageUri: string | null = null;
     let imageUriToSave = imageUri;
     if (pendingPhoto) {
@@ -575,8 +644,8 @@ export default function RecipeDetailScreen() {
         );
         imageUriToSave = newlyPersistedImageUri;
       } catch (imageError) {
-        console.error('Unable to save selected recipe photo.', imageError);
-        setPhotoError(t('recipes.photoSaveError'));
+        console.error("Unable to save selected recipe photo.", imageError);
+        setPhotoError(t("recipes.photoSaveError"));
         setIsSaving(false);
         return;
       }
@@ -586,24 +655,29 @@ export default function RecipeDetailScreen() {
       const savedRecipeId = await saveRecipe(database, {
         id: isNew ? undefined : id,
         name: parsedName,
-        portions: isSubRecipe ? 1 : parsedPortions?.toNumber() ?? 1,
-        batchYieldQuantity: isSubRecipe ? parsedYield?.toString() ?? '1' : portions,
-        batchYieldUnit: isSubRecipe ? batchYieldUnit : 'portion',
+        portions: isSubRecipe ? 1 : (parsedPortions?.toNumber() ?? 1),
+        batchYieldQuantity: isSubRecipe
+          ? (parsedYield?.toString() ?? "1")
+          : portions,
+        batchYieldUnit: isSubRecipe ? batchYieldUnit : "portion",
         isSubRecipe,
         sellingPriceMinor:
-          channelPriceDrafts.find((price) => price.channelId === 'dine-in')?.priceMinor ??
+          channelPriceDrafts.find((price) => price.channelId === "dine-in")
+            ?.priceMinor ??
           channelPriceDrafts[0]?.priceMinor ??
           null,
         notes: notes.trim(),
-        laborMinutes: parsedLaborMinutes?.toString() ?? '0',
-        laborRateMinor: toMinorUnits(parsedLaborRate ?? new Decimal(0), fractionDigits) ?? 0,
+        laborMinutes: parsedLaborMinutes?.toString() ?? "0",
+        laborRateMinor:
+          toMinorUnits(parsedLaborRate ?? new Decimal(0), fractionDigits) ?? 0,
         overheadMode,
-        overheadValue: parsedOverhead?.toString() ?? '0',
+        overheadValue: parsedOverhead?.toString() ?? "0",
         imageUri: imageUriToSave,
         channelPrices: channelPriceDrafts,
         items: items.map((item) => ({
           ...item,
-          quantity: parseDecimal(item.quantity, locale)?.toString() ?? item.quantity,
+          quantity:
+            parseDecimal(item.quantity, locale)?.toString() ?? item.quantity,
         })),
         packaging: packaging.map((line) => ({
           ...line,
@@ -620,7 +694,10 @@ export default function RecipeDetailScreen() {
         try {
           await removeStoredRecipeImage(previousImageUri);
         } catch (cleanupError) {
-          console.error('Unable to remove the previous recipe photo.', cleanupError);
+          console.error(
+            "Unable to remove the previous recipe photo.",
+            cleanupError,
+          );
         }
       }
       if (previousSubRecipeCost) {
@@ -631,11 +708,15 @@ export default function RecipeDetailScreen() {
             fractionDigits,
           );
           if (!updatedSubRecipe) {
-            throw new Error('The saved sub-recipe could not be reloaded.');
+            throw new Error("The saved sub-recipe could not be reloaded.");
           }
-          if (!previousSubRecipeCost.eq(updatedSubRecipe.cost.foodCostPerYieldUnit)) {
+          if (
+            !previousSubRecipeCost.eq(
+              updatedSubRecipe.cost.foodCostPerYieldUnit,
+            )
+          ) {
             const report = await getPriceChangeImpact(database, {
-              type: 'recipe',
+              type: "recipe",
               id: savedRecipeId,
             });
             if (report.dishes.length > 0) {
@@ -644,31 +725,37 @@ export default function RecipeDetailScreen() {
             }
           }
         } catch (impactError) {
-          console.error('Unable to calculate sub-recipe price-change impact.', impactError);
-          setFormError(t('impact.savedButImpactError'));
+          console.error(
+            "Unable to calculate sub-recipe price-change impact.",
+            impactError,
+          );
+          setFormError(t("impact.savedButImpactError"));
           return;
         }
       }
       router.back();
     } catch (saveError) {
-      console.error('Unable to save recipe.', saveError);
+      console.error("Unable to save recipe.", saveError);
       if (newlyPersistedImageUri) {
         try {
           await removeStoredRecipeImage(newlyPersistedImageUri);
         } catch (cleanupError) {
-          console.error('Unable to remove an unsaved recipe photo.', cleanupError);
+          console.error(
+            "Unable to remove an unsaved recipe photo.",
+            cleanupError,
+          );
         }
       }
       if (saveError instanceof RecipeCycleError) {
-        setFormError(t('recipes.cycleError'));
+        setFormError(t("recipes.cycleError"));
       } else if (saveError instanceof MissingRecipeReferenceError) {
-        setFormError(t('recipes.missingItem'));
+        setFormError(t("recipes.missingItem"));
       } else if (saveError instanceof InvalidSubRecipeError) {
-        setFormError(t('recipes.invalidSubRecipe'));
+        setFormError(t("recipes.invalidSubRecipe"));
       } else if (saveError instanceof InvalidPackagingOnSubRecipeError) {
-        setFormError(t('packaging.subRecipeNotAllowed'));
+        setFormError(t("packaging.subRecipeNotAllowed"));
       } else {
-        setFormError(t('recipes.saveError'));
+        setFormError(t("recipes.saveError"));
       }
     } finally {
       setIsSaving(false);
@@ -677,12 +764,19 @@ export default function RecipeDetailScreen() {
 
   const resolveItemName = (item: RecipeItemDraft) => {
     if (!workspace) {
-      return '';
+      return "";
     }
-    if (item.kind === 'ingredient') {
-      return workspace.ingredients.find((candidate) => candidate.id === item.referenceId)?.name ?? t('recipes.missingItemName');
+    if (item.kind === "ingredient") {
+      return (
+        workspace.ingredients.find(
+          (candidate) => candidate.id === item.referenceId,
+        )?.name ?? t("recipes.missingItemName")
+      );
     }
-    return workspace.recipes.find((candidate) => candidate.id === item.referenceId)?.name ?? t('recipes.missingItemName');
+    return (
+      workspace.recipes.find((candidate) => candidate.id === item.referenceId)
+        ?.name ?? t("recipes.missingItemName")
+    );
   };
 
   const removeDraftItem = (item: RecipeItemDraft) => {
@@ -692,15 +786,17 @@ export default function RecipeDetailScreen() {
 
   const exportCostSheet = async () => {
     setIsExportingPdf(true);
-    setPdfError('');
+    setPdfError("");
     try {
       const data = await getRecipeEditorData(database, id, fractionDigits);
       if (!data || data.recipe.isSubRecipe) {
-        throw new Error('A saved dish is required to export a cost sheet.');
+        throw new Error("A saved dish is required to export a cost sheet.");
       }
 
       const channelRows = data.channelPrices.flatMap((price) => {
-        const channel = data.channels.find((candidate) => candidate.id === price.channelId);
+        const channel = data.channels.find(
+          (candidate) => candidate.id === price.channelId,
+        );
         if (!channel) {
           return [];
         }
@@ -731,31 +827,41 @@ export default function RecipeDetailScreen() {
         ];
       });
       const defaultChannelId =
-        data.channels.find((channel) => channel.id === 'dine-in')?.id ??
+        data.channels.find((channel) => channel.id === "dine-in")?.id ??
         data.channels[0]?.id;
       const defaultPackagingCost = defaultChannelId
-        ? data.cost.packagingCostByChannel[defaultChannelId] ?? new Decimal(0)
+        ? (data.cost.packagingCostByChannel[defaultChannelId] ?? new Decimal(0))
         : new Decimal(0);
       const packagingBreakdown = data.channels.flatMap((channel) =>
-        (data.cost.packagingBreakdownByChannel[channel.id] ?? []).map((line) => ({
-          name: line.name,
-          quantity: line.quantityPerPortion,
-          channel: channel.name,
-          cost: formatCurrency(line.costPerPortion, currency, locale),
-        })),
+        (data.cost.packagingBreakdownByChannel[channel.id] ?? []).map(
+          (line) => ({
+            name: line.name,
+            quantity: line.quantityPerPortion,
+            channel: channel.name,
+            cost: formatCurrency(line.costPerPortion, currency, locale),
+          }),
+        ),
       );
 
       const html = buildRecipeCostSheetHtml({
         locale,
         recipeName: data.recipe.name,
         generatedAt: new Intl.DateTimeFormat(locale, {
-          dateStyle: 'medium',
-          timeStyle: 'short',
+          dateStyle: "medium",
+          timeStyle: "short",
         }).format(new Date()),
-        portions: t('pricing.portionCount', { count: data.recipe.portions }),
+        portions: t("pricing.portionCount", { count: data.recipe.portions }),
         batchCost: formatCurrency(data.cost.batchFoodCost, currency, locale),
-        foodCostPerPlate: formatCurrency(data.cost.foodCostPerPortion, currency, locale),
-        packagingCostPerPlate: formatCurrency(defaultPackagingCost, currency, locale),
+        foodCostPerPlate: formatCurrency(
+          data.cost.foodCostPerPortion,
+          currency,
+          locale,
+        ),
+        packagingCostPerPlate: formatCurrency(
+          defaultPackagingCost,
+          currency,
+          locale,
+        ),
         costPerPlate: formatCurrency(
           data.cost.foodCostPerPortion.plus(defaultPackagingCost),
           currency,
@@ -770,34 +876,34 @@ export default function RecipeDetailScreen() {
         packagingBreakdown,
         channels: channelRows,
         labels: {
-          generated: t('pricing.generatedAt'),
-          portions: t('recipes.portions'),
-          batchCost: t('recipes.costPerBatch'),
-          costPerPlate: t('recipes.costPerPortion'),
-          foodCost: t('packaging.foodCost'),
-          packagingCost: t('packaging.packagingCostPerPortion'),
-          packagingBreakdown: t('packaging.packagingBlock'),
-          appliesTo: t('packaging.appliesTo'),
-          costBreakdown: t('pricing.costBreakdown'),
-          item: t('pricing.item'),
-          quantity: t('pricing.quantity'),
-          cost: t('pricing.cost'),
-          salesChannels: t('pricing.salesChannels'),
-          channel: t('pricing.channel'),
-          price: t('pricing.price'),
-          channelCost: t('pricing.channelCost'),
-          fees: t('pricing.fees'),
-          profit: t('pricing.profitPerPlate'),
-          margin: t('pricing.margin'),
+          generated: t("pricing.generatedAt"),
+          portions: t("recipes.portions"),
+          batchCost: t("recipes.costPerBatch"),
+          costPerPlate: t("recipes.costPerPortion"),
+          foodCost: t("packaging.foodCost"),
+          packagingCost: t("packaging.packagingCostPerPortion"),
+          packagingBreakdown: t("packaging.packagingBlock"),
+          appliesTo: t("packaging.appliesTo"),
+          costBreakdown: t("pricing.costBreakdown"),
+          item: t("pricing.item"),
+          quantity: t("pricing.quantity"),
+          cost: t("pricing.cost"),
+          salesChannels: t("pricing.salesChannels"),
+          channel: t("pricing.channel"),
+          price: t("pricing.price"),
+          channelCost: t("pricing.channelCost"),
+          fees: t("pricing.fees"),
+          profit: t("pricing.profitPerPlate"),
+          margin: t("pricing.margin"),
         },
       });
-      await sharePdfFile(html, t('pricing.pdfShareTitle'));
+      await sharePdfFile(html, t("pricing.pdfShareTitle"));
     } catch (error) {
-      console.error('Unable to create or share recipe cost sheet.', error);
+      console.error("Unable to create or share recipe cost sheet.", error);
       setPdfError(
         error instanceof SharingUnavailableError
-          ? t('pricing.pdfShareError')
-          : t('pricing.pdfError'),
+          ? t("pricing.pdfShareError")
+          : t("pricing.pdfError"),
       );
     } finally {
       setIsExportingPdf(false);
@@ -820,25 +926,38 @@ export default function RecipeDetailScreen() {
     () => [
       ...(workspace?.recipeEdges.filter((edge) => edge.recipeId !== id) ?? []),
       ...items
-        .filter((item) => item.kind === 'recipe')
-        .map((item) => ({ recipeId: isNew ? 'draft-recipe' : id, childRecipeId: item.referenceId })),
+        .filter((item) => item.kind === "recipe")
+        .map((item) => ({
+          recipeId: isNew ? "draft-recipe" : id,
+          childRecipeId: item.referenceId,
+        })),
     ],
     [id, isNew, items, workspace],
   );
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: HERO_TOP }}>
+    <SafeAreaView
+      edges={["top"]}
+      className="flex-1"
+      style={{ backgroundColor: HERO_TOP }}
+    >
       <LinearGradient
         colors={HERO_GRADIENT}
-        style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 }}>
+        style={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 }}
+      >
         <View className="flex-row items-center gap-3">
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t('recipes.close')}
+            accessibilityLabel={t("recipes.close")}
             onPress={() => router.back()}
-            className="h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/15">
+            className="h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/15"
+          >
             <SymbolView
-              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+              name={{
+                ios: "chevron.left",
+                android: "arrow_back",
+                web: "arrow_back",
+              }}
               tintColor="#FFFFFF"
               size={22}
             />
@@ -846,16 +965,19 @@ export default function RecipeDetailScreen() {
           <Text
             accessibilityRole="header"
             numberOfLines={1}
-            className="min-w-0 flex-1 font-inter-extrabold text-[20px] leading-[26px] text-white">
-            {isNew ? t('recipes.newRecipe') : t('recipes.editRecipe')}
+            className="min-w-0 flex-1 font-inter-extrabold text-[20px] leading-[26px] text-white"
+          >
+            {isNew ? t("recipes.newRecipe") : t("recipes.editRecipe")}
           </Text>
         </View>
 
         <View className="mt-3 flex-row gap-2">
-          {(['dish', 'sub-recipe'] as const).map((recipeType) => {
-            const selected = isSubRecipe === (recipeType === 'sub-recipe');
+          {(["dish", "sub-recipe"] as const).map((recipeType) => {
+            const selected = isSubRecipe === (recipeType === "sub-recipe");
             const label = t(
-              recipeType === 'dish' ? 'recipes.dishType' : 'recipes.subRecipeType',
+              recipeType === "dish"
+                ? "recipes.dishType"
+                : "recipes.subRecipeType",
             );
             return (
               <Pressable
@@ -864,25 +986,29 @@ export default function RecipeDetailScreen() {
                 accessibilityState={{ selected }}
                 accessibilityLabel={label}
                 onPress={() => {
-                  const nextIsSubRecipe = recipeType === 'sub-recipe';
+                  const nextIsSubRecipe = recipeType === "sub-recipe";
                   if (nextIsSubRecipe && packaging.length > 0) {
-                    setFormError(t('packaging.removeBeforeSubRecipe'));
+                    setFormError(t("packaging.removeBeforeSubRecipe"));
                     return;
                   }
                   setIsSubRecipe(nextIsSubRecipe);
-                  setFormError('');
+                  setFormError("");
                   if (nextIsSubRecipe) {
                     setBatchYieldQuantity(portions);
-                    setBatchYieldUnit('portion');
+                    setBatchYieldUnit("portion");
                   }
                 }}
                 className={`min-h-11 flex-1 items-center justify-center rounded-full border px-3 ${
-                  selected ? 'border-white bg-white' : 'border-white/30 bg-white/15'
-                }`}>
+                  selected
+                    ? "border-white bg-white"
+                    : "border-white/30 bg-white/15"
+                }`}
+              >
                 <Text
                   className={`font-inter-semibold text-[14px] ${
-                    selected ? 'text-brand' : 'text-white'
-                  }`}>
+                    selected ? "text-brand" : "text-white"
+                  }`}
+                >
                   {label}
                 </Text>
               </Pressable>
@@ -893,25 +1019,38 @@ export default function RecipeDetailScreen() {
 
       <ScrollView
         className="flex-1 bg-bg"
-        contentContainerStyle={{ gap: 20, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
-        keyboardShouldPersistTaps="handled">
+        contentContainerStyle={{
+          gap: 20,
+          paddingHorizontal: 16,
+          paddingTop: 16,
+          paddingBottom: 24,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
         {formError && isLoadError ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t('recipes.retry')}
+            accessibilityLabel={t("recipes.retry")}
             onPress={() => void loadData()}
-            className="min-h-12 justify-center">
-            <Text accessibilityRole="alert" className="font-inter text-base text-bad">
-              {formError} {t('recipes.retry')}
+            className="min-h-12 justify-center"
+          >
+            <Text
+              accessibilityRole="alert"
+              className="font-inter text-base text-bad"
+            >
+              {formError} {t("recipes.retry")}
             </Text>
           </Pressable>
         ) : formError ? (
-          <Text accessibilityRole="alert" className="font-inter text-base text-bad">
+          <Text
+            accessibilityRole="alert"
+            className="font-inter text-base text-bad"
+          >
             {formError}
           </Text>
         ) : null}
         <TextField
-          label={t('recipes.name')}
+          label={t("recipes.name")}
           value={name}
           onChangeText={(value) => {
             setName(value);
@@ -921,10 +1060,12 @@ export default function RecipeDetailScreen() {
         />
         {!isSubRecipe ? (
           <View className="gap-2">
-            <Text className="text-sm font-inter-semibold text-ink">{t('recipes.photo')}</Text>
+            <Text className="text-sm font-inter-semibold text-ink">
+              {t("recipes.photo")}
+            </Text>
             {imageUri ? (
               <Image
-                accessibilityLabel={t('recipes.photo')}
+                accessibilityLabel={t("recipes.photo")}
                 source={{ uri: imageUri }}
                 resizeMode="cover"
                 className="h-48 w-full rounded-xl"
@@ -932,45 +1073,54 @@ export default function RecipeDetailScreen() {
             ) : (
               <View className="h-48 items-center justify-center gap-2 rounded-xl border border-line bg-surface">
                 <SymbolView
-                  name={{ ios: 'photo', android: 'image', web: 'image' }}
+                  name={{ ios: "photo", android: "image", web: "image" }}
                   tintColor={Colors.light.tabIconDefault}
                   size={28}
                 />
-                <Text className="font-inter text-sm text-muted">{t('recipes.photo')}</Text>
+                <Text className="font-inter text-sm text-muted">
+                  {t("recipes.photo")}
+                </Text>
               </View>
             )}
             <View className="flex-row gap-2">
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t(imageUri ? 'recipes.changePhoto' : 'recipes.addPhoto')}
+                accessibilityLabel={t(
+                  imageUri ? "recipes.changePhoto" : "recipes.addPhoto",
+                )}
                 disabled={!isReady || isPickingPhoto || isSaving}
                 onPress={() => void pickDishPhoto()}
                 className={`min-h-12 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-3 ${
-                  isPickingPhoto ? 'opacity-50' : ''
-                }`}>
+                  isPickingPhoto ? "opacity-50" : ""
+                }`}
+              >
                 <Text className="text-base font-inter-semibold text-brand">
-                  {t(imageUri ? 'recipes.changePhoto' : 'recipes.addPhoto')}
+                  {t(imageUri ? "recipes.changePhoto" : "recipes.addPhoto")}
                 </Text>
               </Pressable>
               {imageUri ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={t('recipes.removePhoto')}
+                  accessibilityLabel={t("recipes.removePhoto")}
                   disabled={isSaving}
                   onPress={() => {
                     setImageUri(null);
                     setPendingPhoto(null);
-                    setPhotoError('');
+                    setPhotoError("");
                   }}
-                  className="min-h-12 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-3">
+                  className="min-h-12 flex-1 items-center justify-center rounded-xl border border-line bg-surface px-3"
+                >
                   <Text className="text-base font-inter-semibold text-bad">
-                    {t('recipes.removePhoto')}
+                    {t("recipes.removePhoto")}
                   </Text>
                 </Pressable>
               ) : null}
             </View>
             {photoError ? (
-              <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
+              <Text
+                accessibilityRole="alert"
+                className="font-inter text-sm text-bad"
+              >
                 {photoError}
               </Text>
             ) : null}
@@ -979,35 +1129,49 @@ export default function RecipeDetailScreen() {
         {isSubRecipe ? (
           <>
             <TextField
-              label={t('recipes.batchYield')}
+              label={t("recipes.batchYield")}
               value={batchYieldQuantity}
               onChangeText={(value) => {
                 setBatchYieldQuantity(value);
-                setFormErrors((current) => ({ ...current, batchYield: undefined }));
+                setFormErrors((current) => ({
+                  ...current,
+                  batchYield: undefined,
+                }));
               }}
-              onBlur={() => setBatchYieldQuantity(formatDecimalInput(batchYieldQuantity, locale))}
+              onBlur={() =>
+                setBatchYieldQuantity(
+                  formatDecimalInput(batchYieldQuantity, locale),
+                )
+              }
               keyboardType="decimal-pad"
               suffix={t(`units.${batchYieldUnit}`)}
               error={formErrors.batchYield}
             />
             <View className="gap-2">
-              <Text className="text-sm font-inter-semibold text-ink">{t('recipes.yieldUnit')}</Text>
+              <Text className="text-sm font-inter-semibold text-ink">
+                {t("recipes.yieldUnit")}
+              </Text>
               <View className="flex-row gap-2">
                 {RECIPE_YIELD_UNITS.map((yieldUnit) => (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityState={{ selected: batchYieldUnit === yieldUnit }}
-                    accessibilityLabel={t('recipes.selectYieldUnit', {
+                    accessibilityState={{
+                      selected: batchYieldUnit === yieldUnit,
+                    }}
+                    accessibilityLabel={t("recipes.selectYieldUnit", {
                       unit: t(`units.${yieldUnit}`),
                     })}
                     onPress={() => setBatchYieldUnit(yieldUnit)}
                     key={yieldUnit}
                     className={`min-h-12 min-w-12 items-center justify-center rounded-xl border px-3 ${
                       batchYieldUnit === yieldUnit
-                        ? 'border-ink bg-surface'
-                        : 'border-line bg-surface'
-                    }`}>
-                    <Text className="font-inter text-base text-ink">{t(`units.${yieldUnit}`)}</Text>
+                        ? "border-ink bg-surface"
+                        : "border-line bg-surface"
+                    }`}
+                  >
+                    <Text className="font-inter text-base text-ink">
+                      {t(`units.${yieldUnit}`)}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
@@ -1016,11 +1180,14 @@ export default function RecipeDetailScreen() {
         ) : (
           <>
             <TextField
-              label={t('recipes.portions')}
+              label={t("recipes.portions")}
               value={portions}
               onChangeText={(value) => {
                 setPortions(value);
-                setFormErrors((current) => ({ ...current, portions: undefined }));
+                setFormErrors((current) => ({
+                  ...current,
+                  portions: undefined,
+                }));
               }}
               onBlur={() => setPortions(formatDecimalInput(portions, locale))}
               keyboardType="decimal-pad"
@@ -1032,7 +1199,7 @@ export default function RecipeDetailScreen() {
         {!isSubRecipe ? (
           <View className="gap-2">
             <Text className="text-base font-inter-semibold text-ink">
-              {t('recipes.salesChannels')}
+              {t("recipes.salesChannels")}
             </Text>
             {workspace?.channels.map((channel) => {
               const isSelected = selectedChannelIds.includes(channel.id);
@@ -1043,34 +1210,38 @@ export default function RecipeDetailScreen() {
                     <Pressable
                       accessibilityRole="switch"
                       accessibilityState={{ checked: isSelected }}
-                      accessibilityLabel={t('recipes.selectSalesChannel', {
+                      accessibilityLabel={t("recipes.selectSalesChannel", {
                         name: channel.name,
                       })}
                       onPress={() => toggleChannel(channel.id)}
-                      className="min-h-12 flex-1 flex-row items-center justify-between">
+                      className="min-h-12 flex-1 flex-row items-center justify-between"
+                    >
                       <View className="flex-1 gap-1">
-                        <Text className="text-base font-inter-semibold text-ink">{channel.name}</Text>
+                        <Text className="text-base font-inter-semibold text-ink">
+                          {channel.name}
+                        </Text>
                         <Text className="font-inter text-sm text-muted">
-                          {t('recipes.channelFeesSummary', {
+                          {t("recipes.channelFeesSummary", {
                             commission: channel.commissionPct,
                             payment: channel.paymentFeePct,
                           })}
                         </Text>
                       </View>
                       <Text className="ms-3 text-base font-inter-semibold text-brand">
-                        {isSelected ? t('settings.on') : t('settings.off')}
+                        {isSelected ? t("settings.on") : t("settings.off")}
                       </Text>
                     </Pressable>
                     {isSelected ? (
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel={t('recipes.editChannelPrice', {
+                        accessibilityLabel={t("recipes.editChannelPrice", {
                           name: channel.name,
                         })}
                         onPress={() => setExpandedChannelPriceId(channel.id)}
-                        className="ms-2 min-h-12 justify-center px-2">
+                        className="ms-2 min-h-12 justify-center px-2"
+                      >
                         <Text className="text-sm font-inter-semibold text-brand">
-                          {t('settings.edit')}
+                          {t("settings.edit")}
                         </Text>
                       </Pressable>
                     ) : null}
@@ -1078,8 +1249,10 @@ export default function RecipeDetailScreen() {
                   {isSelected && isPriceExpanded ? (
                     <View className="pb-3 pt-2">
                       <TextField
-                        label={t('recipes.channelPrice', { name: channel.name })}
-                        value={channelPriceValues[channel.id] ?? ''}
+                        label={t("recipes.channelPrice", {
+                          name: channel.name,
+                        })}
+                        value={channelPriceValues[channel.id] ?? ""}
                         onChangeText={(value) => {
                           setChannelPriceValues((current) => ({
                             ...current,
@@ -1094,7 +1267,7 @@ export default function RecipeDetailScreen() {
                           setChannelPriceValues((current) => ({
                             ...current,
                             [channel.id]: formatDecimalInput(
-                              current[channel.id] ?? '',
+                              current[channel.id] ?? "",
                               locale,
                             ),
                           }))
@@ -1109,7 +1282,10 @@ export default function RecipeDetailScreen() {
               );
             })}
             {formErrors.channelPrices ? (
-              <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
+              <Text
+                accessibilityRole="alert"
+                className="font-inter text-sm text-bad"
+              >
                 {formErrors.channelPrices}
               </Text>
             ) : null}
@@ -1118,14 +1294,19 @@ export default function RecipeDetailScreen() {
 
         <View className="gap-2">
           <View className="flex-row items-center justify-between">
-            <Text className="text-base font-inter-semibold text-ink">{t('recipes.items')}</Text>
+            <Text className="text-base font-inter-semibold text-ink">
+              {t("recipes.items")}
+            </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t('recipes.addItem')}
+              accessibilityLabel={t("recipes.addItem")}
               disabled={!workspace}
               onPress={() => openItemPicker()}
-              className={`min-h-12 justify-center px-3 ${workspace ? '' : 'opacity-50'}`}>
-              <Text className="text-base font-inter-semibold text-brand">{t('recipes.addItem')}</Text>
+              className={`min-h-12 justify-center px-3 ${workspace ? "" : "opacity-50"}`}
+            >
+              <Text className="text-base font-inter-semibold text-brand">
+                {t("recipes.addItem")}
+              </Text>
             </Pressable>
           </View>
           {items.length > 0 ? (
@@ -1148,10 +1329,15 @@ export default function RecipeDetailScreen() {
               );
             })
           ) : (
-            <Text className="font-inter text-base text-muted">{t('recipes.noItems')}</Text>
+            <Text className="font-inter text-base text-muted">
+              {t("recipes.noItems")}
+            </Text>
           )}
           {formErrors.items ? (
-            <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
+            <Text
+              accessibilityRole="alert"
+              className="font-inter text-sm text-bad"
+            >
               {formErrors.items}
             </Text>
           ) : null}
@@ -1160,16 +1346,17 @@ export default function RecipeDetailScreen() {
           <View className="gap-2">
             <View className="flex-row items-center justify-between">
               <Text className="text-base font-inter-semibold text-ink">
-                {t('packaging.sectionTitle')}
+                {t("packaging.sectionTitle")}
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t('packaging.addLine')}
+                accessibilityLabel={t("packaging.addLine")}
                 disabled={!workspace}
                 onPress={() => openPackagingPicker()}
-                className={`min-h-12 justify-center px-3 ${workspace ? '' : 'opacity-50'}`}>
+                className={`min-h-12 justify-center px-3 ${workspace ? "" : "opacity-50"}`}
+              >
                 <Text className="text-base font-inter-semibold text-brand">
-                  {t('packaging.addLine')}
+                  {t("packaging.addLine")}
                 </Text>
               </Pressable>
             </View>
@@ -1186,36 +1373,93 @@ export default function RecipeDetailScreen() {
                   key={line.id}
                   onPress={() => openPackagingPicker(line)}
                   onRemove={() =>
-                    setPackaging((current) => current.filter((entry) => entry.id !== line.id))
+                    setPackaging((current) =>
+                      current.filter((entry) => entry.id !== line.id),
+                    )
                   }
                 />
               ))
             ) : (
               <Text className="font-inter text-base text-muted">
-                {t('packaging.noLines')}
+                {t("packaging.noLines")}
               </Text>
             )}
             <Text className="font-inter text-sm leading-5 text-muted">
-              {t('packaging.wasteHelp')}
+              {t("packaging.wasteHelp")}
             </Text>
             {formErrors.items ? (
-              <Text accessibilityRole="alert" className="font-inter text-sm text-bad">
+              <Text
+                accessibilityRole="alert"
+                className="font-inter text-sm text-bad"
+              >
                 {formErrors.items}
               </Text>
             ) : null}
           </View>
         ) : null}
+        <RecipeCostSummary
+          batchFoodCost={costPreview.result?.batchFoodCost}
+          foodCostPerUnit={
+            costPreview.result
+              ? isSubRecipe
+                ? costPreview.result.foodCostPerYieldUnit
+                : costPreview.result.foodCostPerPortion
+              : undefined
+          }
+          packagingCostPerUnit={
+            !isSubRecipe && costPreview.result
+              ? (costPreview.result.packagingCostByChannel[
+                  previewChannel?.channel?.id ??
+                    workspace?.channels.find(
+                      (channel) => channel.id === "dine-in",
+                    )?.id ??
+                    ""
+                ] ?? new Decimal(0))
+              : undefined
+          }
+          totalCostPerUnit={
+            !isSubRecipe && costPreview.result
+              ? costPreview.result.foodCostPerPortion.plus(
+                  costPreview.result.packagingCostByChannel[
+                    previewChannel?.channel?.id ??
+                      workspace?.channels.find(
+                        (channel) => channel.id === "dine-in",
+                      )?.id ??
+                      ""
+                  ] ?? new Decimal(0),
+                )
+              : undefined
+          }
+          profitPerPortion={profitPerPortion}
+          profitChannelName={previewChannel?.channel?.name}
+          recipeId={!isNew && !isSubRecipe ? id : undefined}
+          isExportingPdf={isExportingPdf}
+          pdfError={pdfError}
+          onExportPdf={() => void exportCostSheet()}
+          isSubRecipe={isSubRecipe}
+          error={costPreview.error}
+          notice={
+            costPreview.result && !isSubRecipe && previewPriceMinor === null
+              ? t("recipes.noPriceYet")
+              : undefined
+          }
+          currency={currency}
+          locale={locale}
+        />
         {removedItem ? (
           <View className="min-h-12 flex-row items-center justify-between rounded-xl border border-line bg-surface px-3">
             <Text className="flex-1 font-inter text-sm text-ink">
-              {t('recipes.itemRemoved', { name: resolveItemName(removedItem) })}
+              {t("recipes.itemRemoved", { name: resolveItemName(removedItem) })}
             </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t('recipes.undoRemove')}
+              accessibilityLabel={t("recipes.undoRemove")}
               onPress={undoRemoveDraftItem}
-              className="ms-2 min-h-12 justify-center px-2">
-              <Text className="text-sm font-inter-semibold text-brand">{t('recipes.undoRemove')}</Text>
+              className="ms-2 min-h-12 justify-center px-2"
+            >
+              <Text className="text-sm font-inter-semibold text-brand">
+                {t("recipes.undoRemove")}
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -1224,15 +1468,26 @@ export default function RecipeDetailScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ expanded: isMoreOptionsOpen }}
-            accessibilityLabel={t('recipes.moreOptions')}
+            accessibilityLabel={t("recipes.moreOptions")}
             onPress={() => setIsMoreOptionsOpen((open) => !open)}
-            className="min-h-12 flex-row items-center justify-between">
-            <Text className="text-base font-inter-semibold text-ink">{t('recipes.moreOptions')}</Text>
+            className="min-h-12 flex-row items-center justify-between"
+          >
+            <Text className="text-base font-inter-semibold text-ink">
+              {t("recipes.moreOptions")}
+            </Text>
             <SymbolView
               name={
                 isMoreOptionsOpen
-                  ? { ios: 'chevron.up', android: 'expand_less', web: 'expand_less' }
-                  : { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }
+                  ? {
+                      ios: "chevron.up",
+                      android: "expand_less",
+                      web: "expand_less",
+                    }
+                  : {
+                      ios: "chevron.down",
+                      android: "expand_more",
+                      web: "expand_more",
+                    }
               }
               tintColor={Colors.light.text}
               size={22}
@@ -1241,33 +1496,45 @@ export default function RecipeDetailScreen() {
           {isMoreOptionsOpen ? (
             <View className="gap-4 pb-2 pt-3">
               <TextField
-                label={t('recipes.laborMinutes')}
+                label={t("recipes.laborMinutes")}
                 value={laborMinutes}
                 onChangeText={(value) => {
                   setLaborMinutes(value);
-                  setFormErrors((current) => ({ ...current, laborMinutes: undefined }));
+                  setFormErrors((current) => ({
+                    ...current,
+                    laborMinutes: undefined,
+                  }));
                 }}
-                onBlur={() => setLaborMinutes(formatDecimalInput(laborMinutes, locale))}
+                onBlur={() =>
+                  setLaborMinutes(formatDecimalInput(laborMinutes, locale))
+                }
                 keyboardType="decimal-pad"
                 error={formErrors.laborMinutes}
               />
               <TextField
-                label={t('recipes.hourlyRate')}
+                label={t("recipes.hourlyRate")}
                 value={laborRate}
                 onChangeText={(value) => {
                   setLaborRate(value);
-                  setFormErrors((current) => ({ ...current, laborRate: undefined }));
+                  setFormErrors((current) => ({
+                    ...current,
+                    laborRate: undefined,
+                  }));
                 }}
-                onBlur={() => setLaborRate(formatDecimalInput(laborRate, locale))}
+                onBlur={() =>
+                  setLaborRate(formatDecimalInput(laborRate, locale))
+                }
                 keyboardType="decimal-pad"
                 prefix={priceAffixes.prefix}
                 suffix={priceAffixes.suffix}
                 error={formErrors.laborRate}
               />
               <View className="gap-2">
-                <Text className="text-sm font-inter-semibold text-ink">{t('recipes.overhead')}</Text>
+                <Text className="text-sm font-inter-semibold text-ink">
+                  {t("recipes.overhead")}
+                </Text>
                 <View className="flex-row flex-wrap gap-2">
-                  {(['none', 'flat', 'percent'] as const).map((mode) => (
+                  {(["none", "flat", "percent"] as const).map((mode) => (
                     <Pressable
                       accessibilityRole="button"
                       accessibilityState={{ selected: overheadMode === mode }}
@@ -1276,33 +1543,45 @@ export default function RecipeDetailScreen() {
                       key={mode}
                       className={`min-h-12 items-center justify-center rounded-xl border px-3 ${
                         overheadMode === mode
-                          ? 'border-ink bg-surface'
-                          : 'border-line bg-surface'
-                      }`}>
-                      <Text className="font-inter text-sm text-ink">{t(`recipes.${mode}Overhead`)}</Text>
+                          ? "border-ink bg-surface"
+                          : "border-line bg-surface"
+                      }`}
+                    >
+                      <Text className="font-inter text-sm text-ink">
+                        {t(`recipes.${mode}Overhead`)}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
               </View>
-              {overheadMode !== 'none' ? (
+              {overheadMode !== "none" ? (
                 <TextField
-                  label={t('recipes.overheadValue')}
+                  label={t("recipes.overheadValue")}
                   value={overheadValue}
                   onChangeText={(value) => {
                     setOverheadValue(value);
-                    setFormErrors((current) => ({ ...current, overhead: undefined }));
+                    setFormErrors((current) => ({
+                      ...current,
+                      overhead: undefined,
+                    }));
                   }}
-                  onBlur={() => setOverheadValue(formatDecimalInput(overheadValue, locale))}
+                  onBlur={() =>
+                    setOverheadValue(formatDecimalInput(overheadValue, locale))
+                  }
                   keyboardType="decimal-pad"
-                  prefix={overheadMode === 'flat' ? priceAffixes.prefix : undefined}
-                  suffix={overheadMode === 'flat' ? priceAffixes.suffix : '%'}
+                  prefix={
+                    overheadMode === "flat" ? priceAffixes.prefix : undefined
+                  }
+                  suffix={overheadMode === "flat" ? priceAffixes.suffix : "%"}
                   error={formErrors.overhead}
                 />
               ) : null}
               <View className="gap-2">
-                <Text className="text-sm font-inter-semibold text-ink">{t('recipes.notes')}</Text>
+                <Text className="text-sm font-inter-semibold text-ink">
+                  {t("recipes.notes")}
+                </Text>
                 <TextInput
-                  accessibilityLabel={t('recipes.notes')}
+                  accessibilityLabel={t("recipes.notes")}
                   value={notes}
                   onChangeText={setNotes}
                   multiline
@@ -1315,56 +1594,12 @@ export default function RecipeDetailScreen() {
         </View>
       </ScrollView>
 
-      <RecipeCostSummary
-        batchFoodCost={costPreview.result?.batchFoodCost}
-        foodCostPerUnit={
-          costPreview.result
-            ? isSubRecipe
-              ? costPreview.result.foodCostPerYieldUnit
-              : costPreview.result.foodCostPerPortion
-            : undefined
-        }
-        packagingCostPerUnit={
-          !isSubRecipe && costPreview.result
-            ? costPreview.result.packagingCostByChannel[
-                previewChannel?.channel?.id ??
-                  workspace?.channels.find((channel) => channel.id === 'dine-in')?.id ??
-                  ''
-              ] ?? new Decimal(0)
-            : undefined
-        }
-        totalCostPerUnit={
-          !isSubRecipe && costPreview.result
-            ? costPreview.result.foodCostPerPortion.plus(
-                costPreview.result.packagingCostByChannel[
-                  previewChannel?.channel?.id ??
-                    workspace?.channels.find((channel) => channel.id === 'dine-in')?.id ??
-                    ''
-                ] ?? new Decimal(0),
-              )
-            : undefined
-        }
-        profitPerPortion={profitPerPortion}
-        profitChannelName={previewChannel?.channel?.name}
-        recipeId={!isNew && !isSubRecipe ? id : undefined}
-        isExportingPdf={isExportingPdf}
-        pdfError={pdfError}
-        onExportPdf={() => void exportCostSheet()}
-        isSubRecipe={isSubRecipe}
-        error={costPreview.error}
-        currency={currency}
-        locale={locale}
-      />
-      {costPreview.result && !isSubRecipe && previewPriceMinor === null ? (
-        <Text className="bg-surface px-4 pb-2 font-inter text-sm text-muted">
-          {t('recipes.noPriceYet')}
-        </Text>
-      ) : null}
       <View
         className="border-t border-line bg-bg px-4 pt-3"
-        style={{ paddingBottom: Math.max(12, insets.bottom) }}>
+        style={{ paddingBottom: Math.max(12, insets.bottom) }}
+      >
         <Button
-          label={isNew ? t('recipes.saveRecipe') : t('recipes.saveChanges')}
+          label={isNew ? t("recipes.saveRecipe") : t("recipes.saveChanges")}
           onPress={() => void validateAndSave()}
           disabled={!isReady || isSaving}
         />
@@ -1416,7 +1651,7 @@ export default function RecipeDetailScreen() {
             const { source } = impactReport;
             setImpactReport(null);
             router.push({
-              pathname: '/impact',
+              pathname: "/impact",
               params: { kind: source.type, id: source.id },
             });
           }}

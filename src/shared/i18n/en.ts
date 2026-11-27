@@ -470,6 +470,7 @@ export const en = {
     costPerBatch: 'Cost per batch',
     costPerPortion: 'Cost per plate',
     costPerYieldUnit: 'Cost per usable unit',
+    costSummary: 'Cost summary',
     profitPerPortion: 'Profit per plate',
     profitPerPortionForChannel: 'Profit per plate · {{channel}}',
     batchCost: 'Cost per batch',
