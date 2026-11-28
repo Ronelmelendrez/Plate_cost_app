@@ -356,6 +356,8 @@ export const en = {
     suggestPrice: 'Suggest price',
     suggestPriceWithTarget: 'Suggest price for {{target}}% target',
     suggestedPriceValue: 'Suggested price: {{price}}',
+    tightTarget:
+      '{{channel}} fees and your {{target}}% target leave only {{share}}% of the price to cover recipe cost. Reaching this target requires a very high selling price.',
     impossibleTarget:
       '{{channel}} fees are too high to reach {{target}}% on this channel.',
     unrepresentable: 'This suggested price is too large to save safely.',
