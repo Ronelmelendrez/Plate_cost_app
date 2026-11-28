@@ -509,6 +509,7 @@ export const en = {
       '{{quantity}} {{unit}} = {{baseQuantity}} {{baseUnit}} × {{unitCost}} per {{baseUnit}} = {{cost}}.',
     finalSubRecipeLineCost: 'Cost per {{basis}} after portioning: {{cost}}.',
     itemSummary: '{{name}}, {{quantity}} {{unit}}, cost {{cost}} per {{basis}}.',
+    itemCostBasisLabel: 'per {{basis}}',
     itemCostBasis: 'plate',
     batchItemCostBasis: 'batch',
     remove: 'Remove',

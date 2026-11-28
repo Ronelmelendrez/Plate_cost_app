@@ -64,11 +64,18 @@ export function RecipeItemRow({
               {kindLabel} · {item.quantity} {t(`units.${item.unit}`)}
             </Text>
           </View>
-          <Text className="ms-2 shrink-0 text-right text-base font-inter-semibold text-ink">
-            {lineCost
-              ? formatUnitCost(lineCost, currency, locale)
-              : t('recipes.costUnavailable')}
-          </Text>
+          <View className="ms-2 shrink-0 items-end">
+            <Text className="text-right text-base font-inter-semibold text-ink">
+              {lineCost
+                ? formatUnitCost(lineCost, currency, locale)
+                : t('recipes.costUnavailable')}
+            </Text>
+            {lineCost ? (
+              <Text className="font-inter text-xs text-muted">
+                {t('recipes.itemCostBasisLabel', { basis: costBasis })}
+              </Text>
+            ) : null}
+          </View>
         </Pressable>
         {calculation ? (
           <>
