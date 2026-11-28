@@ -1,13 +1,18 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { DEFAULT_RECIPE_UNIT_SIZES } from '@core/costing/units';
+import {
+  DEFAULT_RECIPE_UNIT_SIZES,
+  PURCHASE_UNITS,
+  quantityInBaseUnits,
+  type PurchaseUnit,
+} from '@core/costing/units';
 import {
   expandLegacyPackaging,
   type LegacyRecipeItemRow,
   type LegacyRecipeRow,
 } from './packagingMigration';
 
-const DATABASE_VERSION = 8;
+const DATABASE_VERSION = 9;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -314,5 +319,92 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       }
     });
     currentVersion = 8;
+  }
+
+  if (currentVersion < 9) {
+    await db.withTransactionAsync(async () => {
+      const historyRows = await db.getAllAsync<{
+        id: string;
+        ingredient_id: string;
+        purchase_quantity: string;
+        purchase_unit: string;
+      }>(
+        `SELECT id, ingredient_id, purchase_quantity, purchase_unit
+         FROM ingredient_price_history`,
+      );
+      const conversions = await db.getAllAsync<{
+        ingredient_id: string;
+        from_unit: string;
+        base_quantity: string;
+        base_unit: 'g' | 'ml' | 'pc';
+      }>(
+        `SELECT ingredient_id, from_unit, base_quantity, base_unit FROM unit_conversions`,
+      );
+      const conversionsByIngredient = new Map<string, typeof conversions>();
+      for (const conversion of conversions) {
+        const rows = conversionsByIngredient.get(conversion.ingredient_id) ?? [];
+        rows.push(conversion);
+        conversionsByIngredient.set(conversion.ingredient_id, rows);
+      }
+
+      await db.execAsync(`
+        ALTER TABLE ingredient_price_history
+          ADD COLUMN purchase_base_quantity TEXT NOT NULL DEFAULT '1';
+        ALTER TABLE ingredient_price_history
+          ADD COLUMN purchase_base_unit TEXT NOT NULL DEFAULT 'pc';
+        ALTER TABLE ingredient_price_history
+          ADD COLUMN usable_yield_pct TEXT NOT NULL DEFAULT '100';
+
+        DROP INDEX recipe_items_recipe_idx;
+        DROP INDEX recipe_items_reference_idx;
+        CREATE TABLE recipe_items_v9 (
+          id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+          recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('ingredient', 'recipe')),
+          reference_id TEXT NOT NULL,
+          quantity TEXT NOT NULL,
+          unit TEXT NOT NULL CHECK (
+            unit IN ('mg', 'kg', 'g', 'lb', 'oz', 'L', 'ml', 'fl oz', 'piece', 'pc', 'dozen', 'pack', 'cup', 'tbsp', 'tsp', 'portion')
+          )
+        );
+        INSERT INTO recipe_items_v9 (id, recipe_id, kind, reference_id, quantity, unit)
+          SELECT id, recipe_id, kind, reference_id, quantity, unit FROM recipe_items;
+        DROP TABLE recipe_items;
+        ALTER TABLE recipe_items_v9 RENAME TO recipe_items;
+        CREATE INDEX recipe_items_recipe_idx ON recipe_items(recipe_id);
+        CREATE INDEX recipe_items_reference_idx ON recipe_items(kind, reference_id);
+        PRAGMA user_version = 9;
+      `);
+
+      for (const row of historyRows) {
+        if (!PURCHASE_UNITS.includes(row.purchase_unit as PurchaseUnit)) {
+          throw new Error(`Unknown purchase unit in ingredient history: ${row.purchase_unit}.`);
+        }
+        const conversion = conversionsByIngredient
+          .get(row.ingredient_id)
+          ?.find((candidate) => candidate.from_unit === row.purchase_unit);
+        const baseAmount = quantityInBaseUnits(
+          row.purchase_quantity,
+          row.purchase_unit as PurchaseUnit,
+          conversion
+            ? { baseQuantity: conversion.base_quantity, baseUnit: conversion.base_unit }
+            : undefined,
+        );
+        const ingredient = await db.getFirstAsync<{ usable_yield_pct: string }>(
+          `SELECT usable_yield_pct FROM ingredients WHERE id = ?`,
+          row.ingredient_id,
+        );
+        await db.runAsync(
+          `UPDATE ingredient_price_history
+           SET purchase_base_quantity = ?, purchase_base_unit = ?, usable_yield_pct = ?
+           WHERE id = ?`,
+          baseAmount.quantity.toString(),
+          baseAmount.unit,
+          ingredient?.usable_yield_pct ?? '100',
+          row.id,
+        );
+      }
+    });
+    currentVersion = 9;
   }
 }

@@ -4,12 +4,16 @@ import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 
 import type { CostBreakdownLine } from '@core/costing/costEngine';
-import { formatCurrency, formatDecimalInput } from '@core/costing/money';
+import {
+  formatDecimalInput,
+  formatUnitCost,
+} from '@core/costing/money';
 import type { RecipeItemDraft } from '@features/recipes/data/recipeRepository';
 interface RecipeItemRowProps {
   item: RecipeItemDraft;
   name: string;
   lineCost?: Decimal;
+  ingredientCalculation?: CostBreakdownLine['ingredientCalculation'];
   subRecipeCalculation?: CostBreakdownLine['subRecipeCalculation'];
   isSubRecipe: boolean;
   currency: string;
@@ -22,6 +26,7 @@ export function RecipeItemRow({
   item,
   name,
   lineCost,
+  ingredientCalculation,
   subRecipeCalculation,
   isSubRecipe,
   currency,
@@ -35,6 +40,7 @@ export function RecipeItemRow({
   const costBasis = t(
     isSubRecipe ? 'recipes.batchItemCostBasis' : 'recipes.itemCostBasis',
   );
+  const calculation = subRecipeCalculation ?? ingredientCalculation;
 
   return (
     <View className="min-h-16 flex-row items-center border-b border-line py-2">
@@ -47,7 +53,7 @@ export function RecipeItemRow({
             unit: t(`units.${item.unit}`),
             basis: costBasis,
             cost: lineCost
-              ? formatCurrency(lineCost, currency, locale)
+              ? formatUnitCost(lineCost, currency, locale)
               : t('recipes.costUnavailable'),
           })}
           onPress={onPress}
@@ -60,19 +66,17 @@ export function RecipeItemRow({
           </View>
           <Text className="ms-2 shrink-0 text-right text-base font-inter-semibold text-ink">
             {lineCost
-              ? formatCurrency(lineCost, currency, locale)
+              ? formatUnitCost(lineCost, currency, locale)
               : t('recipes.costUnavailable')}
           </Text>
         </Pressable>
-        {subRecipeCalculation ? (
+        {calculation ? (
           <>
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ expanded: isCalculationExpanded }}
               accessibilityLabel={t(
-                isCalculationExpanded
-                  ? 'recipes.hideCalculationFor'
-                  : 'recipes.showCalculationFor',
+                isCalculationExpanded ? 'recipes.hideCalculationFor' : 'recipes.showCalculationFor',
                 { name },
               )}
               onPress={() => setIsCalculationExpanded((current) => !current)}
@@ -88,7 +92,8 @@ export function RecipeItemRow({
             {isCalculationExpanded ? (
               <View className="mb-2 gap-1 rounded-xl bg-bg p-3">
                 <Text className="font-inter text-sm leading-5 text-ink">
-                  {t('recipes.subRecipeCostCalculation', {
+                  {subRecipeCalculation
+                    ? t('recipes.subRecipeCostCalculation', {
                     quantity: formatDecimalInput(item.quantity, locale),
                     unit: t(`units.${item.unit}`),
                     baseQuantity: formatDecimalInput(
@@ -96,23 +101,44 @@ export function RecipeItemRow({
                       locale,
                     ),
                     baseUnit: t(`units.${subRecipeCalculation.unit}`),
-                    unitCost: formatCurrency(
+                    unitCost: formatUnitCost(
                       subRecipeCalculation.costPerBaseUnit,
                       currency,
                       locale,
                     ),
-                    cost: formatCurrency(
+                    cost: formatUnitCost(
                       subRecipeCalculation.lineCost,
                       currency,
                       locale,
                     ),
-                  })}
+                    })
+                    : ingredientCalculation
+                      ? t('recipes.ingredientCostCalculation', {
+                          quantity: formatDecimalInput(item.quantity, locale),
+                          unit: t(`units.${item.unit}`),
+                          baseQuantity: formatDecimalInput(
+                            ingredientCalculation.quantity.toString(),
+                            locale,
+                          ),
+                          baseUnit: t(`units.${ingredientCalculation.unit}`),
+                          unitCost: formatUnitCost(
+                            ingredientCalculation.costPerBaseUnit,
+                            currency,
+                            locale,
+                          ),
+                          cost: formatUnitCost(
+                            ingredientCalculation.lineCost,
+                            currency,
+                            locale,
+                          ),
+                        })
+                      : null}
                 </Text>
                 <Text className="font-inter text-sm leading-5 text-muted">
                   {t('recipes.finalSubRecipeLineCost', {
                     basis: costBasis,
                     cost: lineCost
-                      ? formatCurrency(lineCost, currency, locale)
+                      ? formatUnitCost(lineCost, currency, locale)
                       : t('recipes.costUnavailable'),
                   })}
                 </Text>

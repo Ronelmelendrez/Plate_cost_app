@@ -3,7 +3,12 @@ import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { formatCurrency } from '@core/costing/money';
+import { formatCurrency, formatUnitCost } from '@core/costing/money';
+import {
+  getFriendlyUnitRate,
+  type RecipeYieldUnit,
+  type UnitSystem,
+} from '@core/costing/units';
 
 interface RecipeCostSummaryProps {
   batchFoodCost?: Decimal;
@@ -17,6 +22,9 @@ interface RecipeCostSummaryProps {
   pdfError?: string;
   onExportPdf?: () => void;
   isSubRecipe: boolean;
+  batchYieldQuantity?: string;
+  batchYieldUnit?: RecipeYieldUnit;
+  unitSystem?: UnitSystem;
   error?: string;
   notice?: string;
   currency: string;
@@ -35,6 +43,9 @@ export function RecipeCostSummary({
   pdfError,
   onExportPdf,
   isSubRecipe,
+  batchYieldQuantity,
+  batchYieldUnit,
+  unitSystem = 'metric',
   error,
   notice,
   currency,
@@ -53,6 +64,14 @@ export function RecipeCostSummary({
         </Text>
       ) : batchFoodCost && foodCostPerUnit ? (
         <View className="gap-1">
+          {isSubRecipe && batchYieldQuantity && batchYieldUnit ? (
+            <Text className="font-inter text-sm text-muted">
+              {t('recipes.makesYield', {
+                quantity: batchYieldQuantity,
+                unit: t(`units.${batchYieldUnit}`),
+              })}
+            </Text>
+          ) : null}
           <View className="flex-row items-center justify-between gap-3">
             <Text className="min-w-0 flex-1 font-inter text-sm text-muted">
               {t(isSubRecipe ? 'recipes.costPerBatch' : 'packaging.foodCost')}
@@ -61,12 +80,27 @@ export function RecipeCostSummary({
               {formatCurrency(batchFoodCost, currency, locale)}
             </Text>
           </View>
+          {isSubRecipe && batchYieldUnit && batchYieldUnit !== 'portion' ? (
+            <Text className="font-inter text-sm text-muted">
+              {(() => {
+                const friendlyRate = getFriendlyUnitRate(
+                  foodCostPerUnit,
+                  batchYieldUnit,
+                  unitSystem,
+                );
+                return t('recipes.friendlyYieldCost', {
+                  cost: formatUnitCost(friendlyRate.cost, currency, locale),
+                  unit: t(`units.${friendlyRate.unit}`),
+                });
+              })()}
+            </Text>
+          ) : null}
           <View className="flex-row items-center justify-between gap-3">
             <Text className="min-w-0 flex-1 font-inter text-sm text-muted">
               {t(isSubRecipe ? 'recipes.costPerYieldUnit' : 'packaging.foodCostPerPortion')}
             </Text>
             <Text className="shrink-0 text-right font-inter-semibold text-ink">
-              {formatCurrency(foodCostPerUnit, currency, locale)}
+              {formatUnitCost(foodCostPerUnit, currency, locale)}
             </Text>
           </View>
           {!isSubRecipe && packagingCostPerUnit && totalCostPerUnit ? (
@@ -76,7 +110,7 @@ export function RecipeCostSummary({
                   {t('packaging.packagingCostPerPortion')}
                 </Text>
                 <Text className="shrink-0 text-right font-inter-semibold text-ink">
-                  {formatCurrency(packagingCostPerUnit, currency, locale)}
+                  {formatUnitCost(packagingCostPerUnit, currency, locale)}
                 </Text>
               </View>
               <View className="flex-row items-center justify-between gap-3 border-t border-line pt-1">
@@ -84,7 +118,7 @@ export function RecipeCostSummary({
                   {t('recipes.costPerPortion')}
                 </Text>
                 <Text className="shrink-0 text-right font-inter-semibold text-ink">
-                  {formatCurrency(totalCostPerUnit, currency, locale)}
+                  {formatUnitCost(totalCostPerUnit, currency, locale)}
                 </Text>
               </View>
             </>

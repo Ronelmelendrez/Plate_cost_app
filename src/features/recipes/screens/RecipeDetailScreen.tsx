@@ -41,6 +41,9 @@ import {
 } from "@core/costing/money";
 import {
   RECIPE_YIELD_UNITS,
+  isConversionMissingError,
+  isFamilyMismatchError,
+  isUnitMismatchError,
   type BaseUnit,
   type ConversionUnit,
   type RecipeYieldUnit,
@@ -55,12 +58,12 @@ import { PriceChangeImpactSheet } from "@features/impact/components/PriceChangeI
 import type { PriceChangeImpactReport } from "@features/impact/data/impactRepository";
 import { getPriceChangeImpact } from "@features/impact/data/impactRepository";
 import type { Ingredient } from "@features/ingredients/data/ingredientRepository";
-import {
-  PackagingPicker,
-  PackagingRow,
-  type PackagingItem,
-  type RecipePackagingDraft,
-} from "@features/packaging";
+import { PackagingPicker } from "@features/packaging/components/PackagingPicker";
+import { PackagingRow } from "@features/packaging/components/PackagingRow";
+import type {
+  PackagingItem,
+  RecipePackagingDraft,
+} from "@features/packaging/types";
 import { RecipeCostSummary } from "@features/recipes/components/RecipeCostSummary";
 import { RecipeItemPickerSheet } from "@features/recipes/components/RecipeItemPickerSheet";
 import { RecipeItemRow } from "@features/recipes/components/RecipeItemRow";
@@ -72,6 +75,7 @@ import {
   getRecipeEditorData,
   getRecipeWorkspace,
   saveRecipe,
+  RecipeUnitChangeInUseError,
   type Recipe,
   type RecipeItemDraft,
 } from "@features/recipes/data/recipeRepository";
@@ -116,7 +120,7 @@ interface FormErrors {
 }
 
 function isUnitMismatch(error: unknown) {
-  return error instanceof Error && error.name === "UnitMismatchError";
+  return isUnitMismatchError(error);
 }
 
 export default function RecipeDetailScreen() {
@@ -369,6 +373,22 @@ export default function RecipeDetailScreen() {
       };
     } catch (costError) {
       if (isUnitMismatch(costError)) {
+        if (isFamilyMismatchError(costError)) {
+          return {
+            result: undefined,
+            error: t("recipes.familyMismatch", {
+              unit: t(`units.${costError.toUnit}`),
+            }),
+          };
+        }
+        if (isConversionMissingError(costError)) {
+          return {
+            result: undefined,
+            error: t("recipes.conversionMissing", {
+              unit: t(`units.${costError.unit}`),
+            }),
+          };
+        }
         return { result: undefined, error: t("recipes.unitMismatch") };
       }
       if (costError instanceof RecipeCycleError) {
@@ -621,12 +641,16 @@ export default function RecipeDetailScreen() {
           workspace.unitSizes,
         ).foodCostPerYieldUnit;
       } catch (costError) {
+        if (isUnitMismatchError(costError)) {
+          previousSubRecipeCost = undefined;
+        } else {
         console.error(
           "Unable to calculate the existing sub-recipe cost.",
           costError,
         );
         setFormError(t("recipes.costError"));
         return;
+        }
       }
     }
 
@@ -711,9 +735,9 @@ export default function RecipeDetailScreen() {
             throw new Error("The saved sub-recipe could not be reloaded.");
           }
           if (
-            !previousSubRecipeCost.eq(
-              updatedSubRecipe.cost.foodCostPerYieldUnit,
-            )
+            previousSubRecipeCost &&
+            updatedSubRecipe.cost &&
+            !previousSubRecipeCost.eq(updatedSubRecipe.cost.foodCostPerYieldUnit)
           ) {
             const report = await getPriceChangeImpact(database, {
               type: "recipe",
@@ -754,6 +778,12 @@ export default function RecipeDetailScreen() {
         setFormError(t("recipes.invalidSubRecipe"));
       } else if (saveError instanceof InvalidPackagingOnSubRecipeError) {
         setFormError(t("packaging.subRecipeNotAllowed"));
+      } else if (saveError instanceof RecipeUnitChangeInUseError) {
+        setFormError(
+          t("recipes.yieldUnitChangeBlocked", {
+            count: saveError.affectedCount,
+          }),
+        );
       } else {
         setFormError(t("recipes.saveError"));
       }
@@ -789,9 +819,10 @@ export default function RecipeDetailScreen() {
     setPdfError("");
     try {
       const data = await getRecipeEditorData(database, id, fractionDigits);
-      if (!data || data.recipe.isSubRecipe) {
+      if (!data || data.recipe.isSubRecipe || !data.cost) {
         throw new Error("A saved dish is required to export a cost sheet.");
       }
+      const cost = data.cost;
 
       const channelRows = data.channelPrices.flatMap((price) => {
         const channel = data.channels.find(
@@ -800,8 +831,8 @@ export default function RecipeDetailScreen() {
         if (!channel) {
           return [];
         }
-        const channelCost = data.cost.foodCostPerPortion.plus(
-          data.cost.packagingCostByChannel[price.channelId] ?? new Decimal(0),
+        const channelCost = cost.foodCostPerPortion.plus(
+          cost.packagingCostByChannel[price.channelId] ?? new Decimal(0),
         );
         const pricing = calculateChannelPricing({
           costPerPortion: channelCost,
@@ -830,10 +861,10 @@ export default function RecipeDetailScreen() {
         data.channels.find((channel) => channel.id === "dine-in")?.id ??
         data.channels[0]?.id;
       const defaultPackagingCost = defaultChannelId
-        ? (data.cost.packagingCostByChannel[defaultChannelId] ?? new Decimal(0))
+        ? (cost.packagingCostByChannel[defaultChannelId] ?? new Decimal(0))
         : new Decimal(0);
       const packagingBreakdown = data.channels.flatMap((channel) =>
-        (data.cost.packagingBreakdownByChannel[channel.id] ?? []).map(
+        (cost.packagingBreakdownByChannel[channel.id] ?? []).map(
           (line) => ({
             name: line.name,
             quantity: line.quantityPerPortion,
@@ -851,9 +882,9 @@ export default function RecipeDetailScreen() {
           timeStyle: "short",
         }).format(new Date()),
         portions: t("pricing.portionCount", { count: data.recipe.portions }),
-        batchCost: formatCurrency(data.cost.batchFoodCost, currency, locale),
+        batchCost: formatCurrency(cost.batchFoodCost, currency, locale),
         foodCostPerPlate: formatCurrency(
-          data.cost.foodCostPerPortion,
+          cost.foodCostPerPortion,
           currency,
           locale,
         ),
@@ -863,11 +894,11 @@ export default function RecipeDetailScreen() {
           locale,
         ),
         costPerPlate: formatCurrency(
-          data.cost.foodCostPerPortion.plus(defaultPackagingCost),
+          cost.foodCostPerPortion.plus(defaultPackagingCost),
           currency,
           locale,
         ),
-        breakdown: data.cost.breakdown.map((line) => ({
+        breakdown: cost.breakdown.map((line) => ({
           name: line.name,
           quantity: line.quantity,
           unit: t(`units.${line.unit}`),
@@ -1319,6 +1350,7 @@ export default function RecipeDetailScreen() {
                   item={item}
                   name={resolveItemName(item)}
                   lineCost={line?.costPerPortion}
+                  ingredientCalculation={line?.ingredientCalculation}
                   subRecipeCalculation={line?.subRecipeCalculation}
                   isSubRecipe={isSubRecipe}
                   currency={currency}
@@ -1438,6 +1470,9 @@ export default function RecipeDetailScreen() {
           pdfError={pdfError}
           onExportPdf={() => void exportCostSheet()}
           isSubRecipe={isSubRecipe}
+          batchYieldQuantity={batchYieldQuantity}
+          batchYieldUnit={batchYieldUnit}
+          unitSystem={workspace?.settings.unitSystem ?? "metric"}
           error={costPreview.error}
           notice={
             costPreview.result && !isSubRecipe && previewPriceMinor === null

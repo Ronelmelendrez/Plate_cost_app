@@ -12,23 +12,26 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   currencyAffixes,
   currencyFractionDigits,
-  formatCurrency,
   formatDecimalInput,
+  formatUnitCost,
   parseDecimal,
   toMinorUnits,
 } from '@core/costing/money';
 import { createDrizzleClient } from '@core/db/client';
 import {
   getPriceChangeImpact,
-  PriceChangeImpactSheet,
   type PriceChangeImpactReport,
-} from '@features/impact';
-import { getAppSettings, type AppSettings } from '@features/settings';
+} from '@features/impact/data/impactRepository';
+import { PriceChangeImpactSheet } from '@features/impact/components/PriceChangeImpactSheet';
+import {
+  getAppSettings,
+  type AppSettings,
+} from '@features/settings/data/settingsRepository';
 import {
   getPackagingItem,
   savePackagingItem,
-  type PackagingItem,
-} from '@features/packaging';
+} from '@features/packaging/data/packagingRepository';
+import type { PackagingItem } from '@features/packaging/types';
 import { Button, TextField } from '@shared/ui';
 import { HERO_GRADIENT, HERO_TOP } from '@shared/theme';
 
@@ -267,7 +270,7 @@ export default function PackagingDetailScreen() {
             <Text className="font-inter text-sm text-muted">{t('packaging.costPerPieceLabel')}</Text>
             <Text className="mt-1 font-inter-bold text-lg text-ink">
               {t('packaging.costPerPiece', {
-                cost: formatCurrency(costPerPiece, currency, locale),
+                cost: formatUnitCost(costPerPiece, currency, locale),
               })}
             </Text>
           </View>

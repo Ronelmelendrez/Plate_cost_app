@@ -22,12 +22,19 @@ import { createDrizzleClient } from '@core/db/client';
 import {
   getRecipeEditorData,
   saveRecipeChannelPrice,
-} from '@features/recipes';
+} from '@features/recipes/data/recipeRepository';
 import { getAppSettings, type SalesChannel } from '@features/settings';
 import { Button } from '@shared/ui';
 import { Colors } from '@shared/theme';
 
-type RecipePricingData = NonNullable<Awaited<ReturnType<typeof getRecipeEditorData>>>;
+type RecipeEditorData = NonNullable<Awaited<ReturnType<typeof getRecipeEditorData>>>;
+type RecipePricingData = RecipeEditorData & {
+  cost: NonNullable<RecipeEditorData['cost']>;
+};
+
+function hasCalculatedCost(data: RecipeEditorData): data is RecipePricingData {
+  return data.cost !== undefined;
+}
 
 function getChannelCost(data: RecipePricingData, channelId: string) {
   return data.cost.foodCostPerPortion.plus(
@@ -152,10 +159,12 @@ export default function PriceWhatIfScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [needsUnitFix, setNeedsUnitFix] = useState(false);
   const [screenError, setScreenError] = useState('');
 
   const loadData = useCallback(async () => {
     setLoadError('');
+    setNeedsUnitFix(false);
     setScreenError('');
     setIsLoading(true);
     try {
@@ -168,6 +177,12 @@ export default function PriceWhatIfScreen() {
       if (!recipeData || recipeData.recipe.isSubRecipe) {
         setData(null);
         setLoadError(t('pricing.recipeUnavailable'));
+        return;
+      }
+      if (!hasCalculatedCost(recipeData)) {
+        setData(null);
+        setNeedsUnitFix(true);
+        setLoadError(t('pricing.unitMismatchCost'));
         return;
       }
 
@@ -357,6 +372,12 @@ export default function PriceWhatIfScreen() {
             <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
               {loadError || t('pricing.loadError')}
             </Text>
+            {needsUnitFix ? (
+             <Button
+               label={t('pricing.editDish')}
+               onPress={() => router.push(`/recipe/${id}`)}
+             />
+            ) : null}
             <Button label={t('pricing.retry')} onPress={() => void loadData()} />
           </View>
         </View>

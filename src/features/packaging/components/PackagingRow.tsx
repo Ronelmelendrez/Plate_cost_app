@@ -2,7 +2,10 @@ import { Decimal } from 'decimal.js';
 import { Pressable, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { currencyFractionDigits, formatCurrency } from '@core/costing/money';
+import {
+  currencyFractionDigits,
+  formatUnitCost,
+} from '@core/costing/money';
 import type { PackagingItem, RecipePackagingDraft } from '../types';
 import type { SalesChannel } from '@features/settings';
 
@@ -58,7 +61,7 @@ export function PackagingRow({
         {costPerPiece ? (
           <Text className="font-inter text-sm text-muted">
             {t('packaging.costPerPiece', {
-              cost: formatCurrency(costPerPiece, currency, locale),
+              cost: formatUnitCost(costPerPiece, currency, locale),
             })}
           </Text>
         ) : null}

@@ -15,7 +15,8 @@ import {
   RECIPE_UNITS,
   UNIT_BASE,
   quantityInBaseUnits,
-  UnitMismatchError,
+  purchaseBaseUnit,
+  isUnitMismatchError,
   type BaseUnit,
   type ConversionUnit,
   type RecipeUnit,
@@ -44,7 +45,7 @@ interface RecipeItemPickerSheetProps {
   ingredients: Ingredient[];
   conversionsByIngredient: Map<
     string,
-    { fromUnit: ConversionUnit; baseUnit: BaseUnit }[]
+    { fromUnit: ConversionUnit; baseQuantity: string; baseUnit: BaseUnit }[]
   >;
   recipes: Recipe[];
   recipeEdges: RecipeEdge[];
@@ -64,7 +65,7 @@ function isRecipeUnitCompatible(
   try {
     return quantityInBaseUnits('1', unit, undefined, unitSizes).unit === baseUnit;
   } catch (error) {
-    if (error instanceof UnitMismatchError) {
+    if (isUnitMismatchError(error)) {
       return false;
     }
     throw error;
@@ -99,13 +100,31 @@ export function RecipeItemPickerSheet({
   const options = useMemo<PickerOption[]>(() => {
     if (kind === 'ingredient') {
       return ingredients.map((ingredient) => {
-        const baseUnit = UNIT_BASE[ingredient.purchaseUnit];
         const customUnits = (conversionsByIngredient.get(ingredient.id) ?? [])
-          .filter((conversion) => conversion.baseUnit === baseUnit)
+          .filter(
+            (conversion) =>
+              conversion.baseUnit ===
+              purchaseBaseUnit(
+                ingredient.purchaseUnit,
+                conversionsByIngredient
+                  .get(ingredient.id)
+                  ?.find((candidate) => candidate.fromUnit === ingredient.purchaseUnit),
+              ),
+          )
           .map((conversion) => conversion.fromUnit);
+        const baseUnit = purchaseBaseUnit(
+          ingredient.purchaseUnit,
+          conversionsByIngredient
+            .get(ingredient.id)
+            ?.find((conversion) => conversion.fromUnit === ingredient.purchaseUnit),
+        );
         const units = [
           ...new Set([
-            ...PURCHASE_UNITS.filter((candidate) => UNIT_BASE[candidate] === baseUnit),
+            ...PURCHASE_UNITS.filter(
+              (candidate) =>
+                (candidate === 'pack' && customUnits.includes(candidate)) ||
+                (candidate !== 'pack' && UNIT_BASE[candidate] === baseUnit),
+            ),
             ...RECIPE_UNITS.filter((candidate) =>
               isRecipeUnitCompatible(candidate, baseUnit, unitSizes),
             ),

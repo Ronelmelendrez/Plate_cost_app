@@ -3,7 +3,12 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { currencyFractionDigits, formatCurrency, formatDecimalInput, parseDecimal } from '@core/costing/money';
+import {
+  currencyFractionDigits,
+  formatDecimalInput,
+  formatUnitCost,
+  parseDecimal,
+} from '@core/costing/money';
 import type { SalesChannel } from '@features/settings';
 import { BottomSheet, Button, TextField } from '@shared/ui';
 import { Colors } from '@shared/theme';
@@ -112,7 +117,7 @@ export function PackagingPicker({
                   <Text className="font-inter-semibold text-base text-ink">{item.name}</Text>
                   <Text className="font-inter text-sm text-muted">
                     {t('packaging.costPerPiece', {
-                      cost: formatCurrency(costPerPiece, currency, locale),
+                      cost: formatUnitCost(costPerPiece, currency, locale),
                     })}
                   </Text>
                 </View>

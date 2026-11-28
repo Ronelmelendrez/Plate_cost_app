@@ -6,6 +6,8 @@ import {
   PURCHASE_UNITS,
   RECIPE_UNITS,
   RECIPE_YIELD_UNITS,
+  isUnitMismatchError,
+  quantityInBaseUnits,
 } from '@core/costing/units';
 import {
   expandLegacyPackaging,
@@ -254,16 +256,41 @@ function parseUnitConversions(value: unknown): UnitConversion[] {
   return rows;
 }
 
-function parseIngredientPriceHistory(value: unknown): IngredientPriceHistory[] {
+function parseIngredientPriceHistory(value: unknown, ingredientRows: Ingredient[] = []): IngredientPriceHistory[] {
+  const yieldByIngredient = new Map(
+    ingredientRows.map((ingredient) => [ingredient.id, ingredient.usableYieldPct]),
+  );
   return assertUniqueIds(
     arrayValue(value).map((entry): IngredientPriceHistory => {
       const row = recordValue(entry);
+      const ingredientId = stringValue(row.ingredientId);
+      const purchaseQuantity = positiveDecimalStringValue(row.purchaseQuantity);
+      const purchaseUnit = enumValue(row.purchaseUnit, PURCHASE_UNITS);
+      let baseQuantity = row.purchaseBaseQuantity;
+      let baseUnit = row.purchaseBaseUnit;
+      if (baseQuantity === undefined || baseUnit === undefined) {
+        try {
+          const baseAmount = quantityInBaseUnits(purchaseQuantity, purchaseUnit);
+          baseQuantity ??= baseAmount.quantity.toString();
+          baseUnit ??= baseAmount.unit;
+        } catch (error) {
+          if (isUnitMismatchError(error)) {
+            fail();
+          }
+          throw error;
+        }
+      }
       return {
         id: stringValue(row.id),
-        ingredientId: stringValue(row.ingredientId),
+        ingredientId,
         priceMinor: integerValue(row.priceMinor),
-        purchaseQuantity: positiveDecimalStringValue(row.purchaseQuantity),
-        purchaseUnit: enumValue(row.purchaseUnit, PURCHASE_UNITS),
+        purchaseQuantity,
+        purchaseUnit,
+        purchaseBaseQuantity: positiveDecimalStringValue(baseQuantity),
+        purchaseBaseUnit: enumValue(baseUnit, BASE_UNITS),
+        usableYieldPct: row.usableYieldPct === undefined
+          ? yieldByIngredient.get(ingredientId) ?? '100'
+          : decimalStringValue(row.usableYieldPct, 1, 100),
         recordedAt: timestampValue(row.recordedAt),
       };
     }),
@@ -608,14 +635,18 @@ function parseEnvelope(value: unknown, version: 1 | 2) {
 
 function validateLegacyBackup(value: unknown): BackupV2 {
   const { backup, tables } = parseEnvelope(value, 1);
+  const ingredients = parseIngredients(tables.ingredients);
   const legacy: LegacyBackupV1 = {
     format: 'platecost-backup',
     schema_version: 1,
     exported_at: stringValue(backup.exported_at),
     tables: {
-      ingredients: parseIngredients(tables.ingredients),
+      ingredients,
       unit_conversions: parseUnitConversions(tables.unit_conversions),
-      ingredient_price_history: parseIngredientPriceHistory(tables.ingredient_price_history),
+      ingredient_price_history: parseIngredientPriceHistory(
+        tables.ingredient_price_history,
+        ingredients,
+      ),
       recipes: parseRecipes(tables.recipes),
       recipe_items: parseLegacyRecipeItems(tables.recipe_items),
       packaging_items: parseLegacyPackagingItems(tables.packaging_items),
@@ -704,14 +735,18 @@ export function validateBackup(value: unknown): BackupV2 {
     return validateLegacyBackup(value);
   }
   const { backup, tables } = parseEnvelope(value, 2);
+  const ingredients = parseIngredients(tables.ingredients);
   const validated: BackupV2 = {
     format: 'platecost-backup',
     schema_version: 2,
     exported_at: stringValue(backup.exported_at),
     tables: {
-      ingredients: parseIngredients(tables.ingredients),
+      ingredients,
       unit_conversions: parseUnitConversions(tables.unit_conversions),
-      ingredient_price_history: parseIngredientPriceHistory(tables.ingredient_price_history),
+      ingredient_price_history: parseIngredientPriceHistory(
+        tables.ingredient_price_history,
+        ingredients,
+      ),
       recipes: parseRecipes(tables.recipes),
       recipe_items: parseRecipeItems(tables.recipe_items),
       packaging_items: parsePackagingItems(tables.packaging_items),

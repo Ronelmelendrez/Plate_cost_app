@@ -20,7 +20,7 @@ import {
 } from '@core/costing/money';
 import { getDefaultRoundingRule } from '@core/costing/suggestedPrice';
 import { createDrizzleClient } from '@core/db/client';
-import { getRecipeEditorData } from '@features/recipes';
+import { getRecipeEditorData } from '@features/recipes/data/recipeRepository';
 import {
   getAppSettings,
   listSalesChannels,
@@ -353,7 +353,7 @@ export default function OnboardingScreen() {
         recipeWasSaved = true;
       }
       const recipeData = await getRecipeEditorData(database, recipeId, fractionDigits);
-      if (!recipeData) {
+      if (!recipeData || !recipeData.cost) {
         throw new Error('The saved starter dish could not be loaded.');
       }
       const channel = recipeData.channels.find((item) => item.id === 'dine-in');

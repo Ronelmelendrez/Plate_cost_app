@@ -5,6 +5,7 @@ import {
   currencyFractionDigits,
   formatDecimalInput,
   formatCurrency,
+  formatUnitCost,
   parseDecimal,
   toMinorUnits,
 } from './money';
@@ -55,5 +56,19 @@ describe('currency precision', () => {
     expect(formatCurrency(new Decimal('0.000525'), 'USD', 'en-US')).toBe('$0.000525');
     expect(formatCurrency(new Decimal('0.5'), 'JPY', 'en-US')).toBe('¥0.5');
     expect(formatCurrency(new Decimal('12.345'), 'USD', 'en-US')).toBe('$12.35');
+  });
+
+  it('shows precise unit costs without adding noise to currency amounts', () => {
+    expect(formatUnitCost(new Decimal('0.30423423'), 'USD', 'en-US')).toBe(
+      '$0.30423423',
+    );
+    expect(formatUnitCost(new Decimal('0.30423423'), 'JPY', 'en-US')).toBe(
+      '¥0.30423423',
+    );
+    expect(formatUnitCost(new Decimal('1.2'), 'USD', 'en-US')).toBe('$1.20');
+    expect(formatUnitCost(new Decimal('0.000000004'), 'USD', 'en-US')).toBe(
+      '$0.000000004',
+    );
+    expect(formatCurrency(new Decimal('0.30423423'), 'USD', 'en-US')).toBe('$0.30');
   });
 });

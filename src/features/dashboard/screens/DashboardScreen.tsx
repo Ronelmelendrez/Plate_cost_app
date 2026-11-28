@@ -20,7 +20,7 @@ import {
   SharingUnavailableError,
   snoozeBackupReminder,
 } from '@features/backup';
-import { getRecipeWorkspace } from '@features/recipes';
+import { getRecipeWorkspace } from '@features/recipes/data/recipeRepository';
 import { DashboardHeader } from '@features/dashboard/components/DashboardHeader';
 import { MarginDishRow } from '@features/dashboard/components/MarginDishRow';
 import {
@@ -98,18 +98,22 @@ export default function DashboardScreen() {
   const locale = settings?.locale ?? 'en-US';
   const rowResult = useMemo(() => {
     if (!workspace || !selectedChannelId) {
-      return { rows: [], error: '' };
+      return { rows: [], invalidRecipes: [], error: '' };
     }
     try {
+      const calculation = buildMarginDashboardRows(
+        workspace,
+        selectedChannelId,
+        fractionDigits,
+      );
       return {
-        rows: sortMarginDashboardRows(
-          buildMarginDashboardRows(workspace, selectedChannelId, fractionDigits),
-        ),
+        rows: sortMarginDashboardRows(calculation.rows),
+        invalidRecipes: calculation.invalidRecipes,
         error: '',
       };
     } catch (calculationError) {
       console.error('Unable to calculate dashboard margins.', calculationError);
-      return { rows: [], error: t('dashboard.calculationError') };
+      return { rows: [], invalidRecipes: [], error: t('dashboard.calculationError') };
     }
   }, [fractionDigits, selectedChannelId, t, workspace]);
   const rows = rowResult.rows;
@@ -437,6 +441,24 @@ export default function DashboardScreen() {
             <Text accessibilityRole="alert" className="font-inter text-[14px] leading-[20px] text-bad">
               {rowResult.error}
             </Text>
+          </View>
+        ) : null}
+        {rowResult.invalidRecipes.length > 0 ? (
+          <View className="gap-1 rounded-2xl border border-line bg-warnSoft p-3.5">
+            <Text className="font-inter-semibold text-[14px] leading-[20px] text-ink">
+              {t('dashboard.invalidUnitRecipes')}
+            </Text>
+            {rowResult.invalidRecipes.map((dish) => (
+              <Pressable
+                accessibilityRole="button"
+                key={dish.recipeId}
+                onPress={() => router.push(`/recipe/${dish.recipeId}`)}
+                className="min-h-11 justify-center">
+                <Text className="font-inter-semibold text-[14px] text-brand">
+                  {t('dashboard.fixDishUnits', { name: dish.name })}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         ) : null}
 

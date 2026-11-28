@@ -11,7 +11,11 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createDrizzleClient } from '@core/db/client';
-import { currencyFractionDigits, formatCurrency } from '@core/costing/money';
+import {
+  currencyFractionDigits,
+  formatUnitCost,
+} from '@core/costing/money';
+import { getFriendlyUnitRate, type UnitSystem } from '@core/costing/units';
 import { AddRecipeSheet } from '@features/recipes/components/AddRecipeSheet';
 import {
   listRecipeSummaries,
@@ -30,17 +34,37 @@ function RecipeRow({
   summary,
   currency,
   locale,
+  unitSystem,
   onPress,
 }: {
   summary: RecipeSummary;
   currency: string;
   locale: string;
+  unitSystem: UnitSystem;
   onPress: () => void;
 }) {
   const { t } = useTranslation();
   const isSubRecipe = summary.recipe.isSubRecipe;
-  const cost = formatCurrency(new Decimal(summary.costPerUnit), currency, locale);
-  const costLabel = isSubRecipe ? t('recipes.costPerYieldUnit') : t('recipes.costPerPortion');
+  const rawCost = summary.costPerUnit
+    ? new Decimal(summary.costPerUnit)
+    : undefined;
+  const yieldUnit = summary.recipe.batchYieldUnit;
+  const friendlyRate =
+    rawCost && isSubRecipe && yieldUnit !== 'portion'
+      ? getFriendlyUnitRate(rawCost, yieldUnit, unitSystem)
+      : undefined;
+  const cost = rawCost
+    ? formatUnitCost(friendlyRate?.cost ?? rawCost, currency, locale)
+    : t('recipes.costUnavailable');
+  const costLabel = !rawCost
+    ? t('recipes.unitMismatchListHint')
+    : friendlyRate
+      ? t('recipes.friendlyYieldUnitLabel', {
+          unit: t(`units.${friendlyRate.unit}`),
+        })
+      : isSubRecipe
+        ? t('recipes.costPerYieldUnit')
+        : t('recipes.costPerPortion');
   const typeLabel = isSubRecipe ? t('recipes.subRecipeType') : t('recipes.dishType');
   const accessibilityLabel = t('recipes.recipeSummary', {
     name: summary.recipe.name,
@@ -337,6 +361,7 @@ export default function RecipesScreen() {
             summary={item}
             currency={currency}
             locale={locale}
+            unitSystem={appSettings?.unitSystem ?? 'metric'}
             onPress={() => router.push(`/recipe/${item.recipe.id}`)}
           />
         )}

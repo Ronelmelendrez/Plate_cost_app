@@ -14,8 +14,10 @@ import {
   CONVERSION_UNITS,
   BASE_UNITS,
   costPerUsableBaseUnit,
+  getFriendlyUnitRate,
   PURCHASE_UNITS,
-  UNIT_BASE,
+  purchaseBaseUnit,
+  type UnitSystem,
   type PurchaseUnit,
 } from '@core/costing/units';
 import {
@@ -23,6 +25,7 @@ import {
   currencyFractionDigits,
   formatDecimalInput,
   formatCurrency,
+  formatUnitCost,
   parseDecimal,
   toMinorUnits,
 } from '@core/costing/money';
@@ -65,10 +68,12 @@ function PriceHistory({
   records,
   currency,
   locale,
+  unitSystem,
 }: {
   records: IngredientPriceRecord[];
   currency: string;
   locale: string;
+  unitSystem: UnitSystem;
 }) {
   const { t } = useTranslation();
   const fractionDigits = currencyFractionDigits(currency, locale);
@@ -89,6 +94,30 @@ function PriceHistory({
               {t('ingredients.priceChange', {
                 quantity: record.purchaseQuantity,
                 unit: t(`units.${record.purchaseUnit}`),
+              })}
+            </Text>
+            <Text className="font-inter text-sm text-muted">
+              {t('ingredients.historyUnitPrice', {
+                cost: formatUnitCost(
+                  getFriendlyUnitRate(
+                    priceForRecord(record, fractionDigits)
+                      .div(record.purchaseBaseQuantity)
+                      .div(new Decimal(record.usableYieldPct).div(100)),
+                    record.purchaseBaseUnit,
+                    unitSystem,
+                  ).cost,
+                  currency,
+                  locale,
+                ),
+                unit: t(
+                  `units.${getFriendlyUnitRate(
+                    priceForRecord(record, fractionDigits)
+                      .div(record.purchaseBaseQuantity)
+                      .div(new Decimal(record.usableYieldPct).div(100)),
+                    record.purchaseBaseUnit,
+                    unitSystem,
+                  ).unit}`,
+                ),
               })}
             </Text>
           </View>
@@ -218,12 +247,22 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
   const usableYieldValue = parseDecimal(usableYieldPct, locale);
   const livePriceMinor = priceValue ? toMinorUnits(priceValue, fractionDigits) : null;
   let liveUnitCost: Decimal | null = null;
+  const purchaseConversion = conversions.find(
+    (conversion) => conversion.fromUnit === purchaseUnit,
+  );
+  const purchaseConversionQuantity = purchaseConversion
+    ? parseDecimal(purchaseConversion.baseQuantity, locale)
+    : undefined;
   if (
     purchaseQuantityValue?.gt(0) &&
     priceValue?.gt(0) &&
     livePriceMinor !== null &&
-    usableYieldValue?.gt(0) &&
-    usableYieldValue.lte(100)
+    usableYieldValue?.gte(1) &&
+    usableYieldValue.lte(100) &&
+    (purchaseUnit !== 'pack' ||
+      (purchaseConversionQuantity?.gt(0) &&
+        !!purchaseConversion &&
+        BASE_UNITS.includes(purchaseConversion.baseUnit)))
   ) {
     liveUnitCost = costPerUsableBaseUnit({
       priceMinor: livePriceMinor,
@@ -231,8 +270,20 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
       purchaseQuantity: purchaseQuantityValue.toString(),
       purchaseUnit,
       usableYieldPct: usableYieldValue.toString(),
+      conversion: purchaseConversion,
+      unitSizes: {
+        cupMl: appSettings?.cupMl ?? '240',
+        tablespoonMl: appSettings?.tablespoonMl ?? '15',
+      },
     });
   }
+  const liveBaseUnit = liveUnitCost
+    ? purchaseBaseUnit(purchaseUnit, purchaseConversion)
+    : undefined;
+  const friendlyRate =
+    liveUnitCost && liveBaseUnit
+      ? getFriendlyUnitRate(liveUnitCost, liveBaseUnit, appSettings?.unitSystem ?? 'metric')
+      : undefined;
 
   const setFieldValue = (field: keyof FormErrors, setter: (value: string) => void) => (value: string) => {
     setter(value);
@@ -257,8 +308,11 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
     } else if (toMinorUnits(parsedPrice, fractionDigits) === null) {
       errors.price = t('ingredients.pricePrecision', { digits: fractionDigits, currency });
     }
-    if (!parsedYield || parsedYield.lte(0) || parsedYield.gt(100)) {
+    if (!parsedYield || parsedYield.lt(1) || parsedYield.gt(100)) {
       errors.usableYield = t('ingredients.yieldRequired');
+    }
+    if (purchaseUnit === 'pack' && !purchaseConversion) {
+      errors.conversions = t('ingredients.packConversionRequired');
     }
 
     const customConversions: ConversionDraft[] = [];
@@ -335,12 +389,6 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
       setIsSaving(false);
     }
   };
-
-  const unitCostLabel = liveUnitCost
-    ? t('ingredients.costPerUsableUnit', {
-        unit: t(`units.${UNIT_BASE[purchaseUnit]}`),
-      })
-    : '';
 
   return (
     <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: HERO_TOP }}>
@@ -439,10 +487,22 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
           error={formErrors.usableYield}
         />
 
-        {liveUnitCost ? (
+        {liveUnitCost && liveBaseUnit && friendlyRate ? (
           <View className="rounded-xl border border-line bg-surface px-4 py-3">
             <Text className="text-base font-inter-semibold text-ink">
-              {unitCostLabel}: {formatCurrency(liveUnitCost, currency, locale)}
+              {t('ingredients.costPerUsableUnit', {
+                cost: formatUnitCost(liveUnitCost, currency, locale),
+                unit: t(`units.${liveBaseUnit}`),
+              })}
+            </Text>
+            <Text className="mt-1 font-inter text-sm text-muted">
+              {t('ingredients.costPerFriendlyUnit', {
+                cost: formatUnitCost(friendlyRate.cost, currency, locale),
+                unit: t(`units.${friendlyRate.unit}`),
+              })}
+            </Text>
+            <Text className="mt-1 font-inter text-xs leading-4 text-muted">
+              {t('ingredients.unitCostPrecisionHelp')}
             </Text>
           </View>
         ) : null}
@@ -502,6 +562,7 @@ export default function IngredientDetailScreen({ mode = 'edit' }: { mode?: 'crea
                       records={priceHistory}
                       currency={currency}
                       locale={locale}
+                      unitSystem={appSettings?.unitSystem ?? 'metric'}
                     />
                   )}
                 </View>

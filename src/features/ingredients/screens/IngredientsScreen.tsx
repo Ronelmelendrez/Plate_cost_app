@@ -11,13 +11,22 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createDrizzleClient } from '@core/db/client';
-import { costPerUsableBaseUnit, UNIT_BASE } from '@core/costing/units';
-import { currencyFractionDigits, formatCurrency } from '@core/costing/money';
+import {
+  costPerUsableBaseUnit,
+  getFriendlyUnitRate,
+  purchaseBaseUnit,
+  type UnitSystem,
+} from '@core/costing/units';
+import {
+  currencyFractionDigits,
+  formatCurrency,
+  formatUnitCost,
+} from '@core/costing/money';
 import {
   listIngredients,
   markIngredientRecent,
   setIngredientFavourite,
-  type Ingredient,
+  type IngredientListItem,
 } from '@features/ingredients/data/ingredientRepository';
 import {
   listPackagingItems,
@@ -36,30 +45,37 @@ function IngredientRow({
   ingredient,
   currency,
   locale,
+  unitSystem,
   onPress,
   onToggleFavourite,
 }: {
-  ingredient: Ingredient;
+  ingredient: IngredientListItem;
   currency: string;
   locale: string;
+  unitSystem: UnitSystem;
   onPress: () => void;
   onToggleFavourite: () => void;
 }) {
   const { t } = useTranslation();
   const fractionDigits = currencyFractionDigits(currency, locale);
+  const purchaseConversion = ingredient.conversions.find(
+    (conversion) => conversion.fromUnit === ingredient.purchaseUnit,
+  );
   const costPerUnit = costPerUsableBaseUnit({
     priceMinor: ingredient.purchasePriceMinor,
     fractionDigits,
     purchaseQuantity: ingredient.purchaseQuantity,
     purchaseUnit: ingredient.purchaseUnit,
     usableYieldPct: ingredient.usableYieldPct,
+    conversion: purchaseConversion,
   });
   const purchasePrice = new Decimal(ingredient.purchasePriceMinor).div(
     new Decimal(10).pow(fractionDigits),
   );
-  const baseUnit = UNIT_BASE[ingredient.purchaseUnit];
+  const baseUnit = purchaseBaseUnit(ingredient.purchaseUnit, purchaseConversion);
+  const friendlyRate = getFriendlyUnitRate(costPerUnit, baseUnit, unitSystem);
   const price = formatCurrency(purchasePrice, currency, locale);
-  const unitCost = formatCurrency(costPerUnit, currency, locale);
+  const unitCost = formatUnitCost(friendlyRate.cost, currency, locale);
   const quantityAndUnit = `${ingredient.purchaseQuantity} ${t(`units.${ingredient.purchaseUnit}`)}`;
   const accessibleName = t('ingredients.ingredientDetail', {
     name: ingredient.name,
@@ -67,7 +83,7 @@ function IngredientRow({
     unit: t(`units.${ingredient.purchaseUnit}`),
     price,
     cost: unitCost,
-    baseUnit: t(`units.${baseUnit}`),
+    baseUnit: t(`units.${friendlyRate.unit}`),
     yield: ingredient.usableYieldPct,
   });
 
@@ -99,7 +115,7 @@ function IngredientRow({
           <Text
             numberOfLines={1}
             className="font-inter text-[13px] leading-[18px] text-muted">
-            {unitCost}
+            {unitCost} / {t(`units.${friendlyRate.unit}`)}
             {' · '}
             {quantityAndUnit}
           </Text>
@@ -170,7 +186,7 @@ function PackagingLibraryRow({
         accessibilityRole="button"
         accessibilityLabel={t('packaging.itemSummary', {
           name: item.name,
-          cost: formatCurrency(costPerPiece, currency, locale),
+          cost: formatUnitCost(costPerPiece, currency, locale),
           count: item.piecesPerPack,
         })}
         onPress={onPress}
@@ -180,7 +196,7 @@ function PackagingLibraryRow({
         </Text>
         <Text numberOfLines={1} className="font-inter text-[13px] text-muted">
           {t('packaging.costPerPiece', {
-            cost: formatCurrency(costPerPiece, currency, locale),
+            cost: formatUnitCost(costPerPiece, currency, locale),
           })}
           {' · '}
           {t('packaging.packSize', { count: item.piecesPerPack })}
@@ -217,7 +233,7 @@ export default function IngredientsScreen() {
   const sqlite = useSQLiteContext();
   const database = useMemo(() => createDrizzleClient(sqlite), [sqlite]);
   const { t } = useTranslation();
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [ingredients, setIngredients] = useState<IngredientListItem[]>([]);
   const [packagingItems, setPackagingItems] = useState<PackagingItem[]>([]);
   const [libraryView, setLibraryView] = useState<'ingredients' | 'packaging'>('ingredients');
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -252,7 +268,7 @@ export default function IngredientsScreen() {
     }, [loadLibrary]),
   );
 
-  const openIngredient = async (ingredient: Ingredient) => {
+  const openIngredient = async (ingredient: IngredientListItem) => {
     try {
       await markIngredientRecent(database, ingredient.id);
     } catch (updateError) {
@@ -262,7 +278,7 @@ export default function IngredientsScreen() {
     router.push(`/ingredient/${ingredient.id}`);
   };
 
-  const toggleFavourite = async (ingredient: Ingredient) => {
+  const toggleFavourite = async (ingredient: IngredientListItem) => {
     try {
       await setIngredientFavourite(database, ingredient.id, !ingredient.isFavourite);
       await loadLibrary();
@@ -427,7 +443,7 @@ export default function IngredientsScreen() {
         </View>
       </LinearGradient>
 
-      <FlashList<Ingredient | PackagingItem>
+      <FlashList<IngredientListItem | PackagingItem>
         data={listData}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
@@ -437,6 +453,7 @@ export default function IngredientsScreen() {
               ingredient={item}
               currency={currency}
               locale={locale}
+              unitSystem={appSettings?.unitSystem ?? 'metric'}
               onPress={() => void openIngredient(item)}
               onToggleFavourite={() => void toggleFavourite(item)}
             />

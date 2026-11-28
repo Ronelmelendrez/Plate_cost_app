@@ -24,8 +24,17 @@ import {
   recipes,
   unitConversions,
 } from '@core/db/schema';
-import type { RecipeUnit, RecipeUnitSizes, RecipeYieldUnit } from '@core/costing/units';
-import { getAppSettings, listSalesChannels } from '@features/settings';
+import {
+  isUnitMismatchError,
+  unitBase,
+  type RecipeUnit,
+  type RecipeUnitSizes,
+  type RecipeYieldUnit,
+} from '@core/costing/units';
+import {
+  getAppSettings,
+  listSalesChannels,
+} from '@features/settings/data/settingsRepository';
 import type { RecipePackagingDraft } from '@features/packaging';
 
 export type Recipe = typeof recipes.$inferSelect;
@@ -60,9 +69,16 @@ export interface RecipeInput {
 
 export interface RecipeSummary {
   recipe: Recipe;
-  costPerUnit: string;
-  batchCost: string;
+  costPerUnit?: string;
+  batchCost?: string;
   itemCount: number;
+}
+
+export class RecipeUnitChangeInUseError extends Error {
+  constructor(readonly affectedCount: number) {
+    super('The sub-recipe yield unit cannot change while linked recipe lines use a different unit family.');
+    this.name = 'RecipeUnitChangeInUseError';
+  }
 }
 
 async function loadCostingContext(database: AppDatabase) {
@@ -262,22 +278,30 @@ export async function listRecipeSummaries(database: AppDatabase, fractionDigits:
     if (!costInput) {
       throw new Error(`Recipe "${recipe.name}" could not be loaded.`);
     }
-    const result = calculateRecipeCost(
-      costInput,
-      context.wastePct,
-      fractionDigits,
-      context.unitSizes,
-    );
+    let result: ReturnType<typeof calculateRecipeCost> | undefined;
+    try {
+      result = calculateRecipeCost(
+        costInput,
+        context.wastePct,
+        fractionDigits,
+        context.unitSizes,
+      );
+    } catch (error) {
+      if (!isUnitMismatchError(error)) {
+        throw error;
+      }
+    }
     return {
       recipe,
-      costPerUnit: (
-        recipe.isSubRecipe
-          ? result.foodCostPerYieldUnit
-          : result.foodCostPerPortion.plus(
-              result.packagingCostByChannel['dine-in'] ?? new Decimal(0),
-            )
-      ).toString(),
-      batchCost: result.batchFoodCost.toString(),
+      costPerUnit: result
+        ? (recipe.isSubRecipe
+            ? result.foodCostPerYieldUnit
+            : result.foodCostPerPortion.plus(
+                result.packagingCostByChannel['dine-in'] ?? new Decimal(0),
+              )
+          ).toString()
+        : undefined,
+      batchCost: result?.batchFoodCost.toString(),
       itemCount: context.itemsByRecipe.get(recipe.id)?.length ?? 0,
     } satisfies RecipeSummary;
   });
@@ -294,7 +318,19 @@ export async function getRecipeEditorData(database: AppDatabase, id: string, fra
   if (!costInput) {
     return undefined;
   }
-  const cost = calculateRecipeCost(costInput, context.wastePct, fractionDigits, context.unitSizes);
+  let cost: ReturnType<typeof calculateRecipeCost> | undefined;
+  try {
+    cost = calculateRecipeCost(
+      costInput,
+      context.wastePct,
+      fractionDigits,
+      context.unitSizes,
+    );
+  } catch (error) {
+    if (!isUnitMismatchError(error)) {
+      throw error;
+    }
+  }
   return {
     recipe,
     items: context.itemsByRecipe.get(id) ?? [],
@@ -364,6 +400,22 @@ export async function saveRecipe(database: AppDatabase, input: RecipeInput) {
 
     if (input.id) {
       const currentRecipeId = input.id;
+      const currentRecipe = recipesById.get(currentRecipeId);
+      if (
+        currentRecipe?.isSubRecipe &&
+        input.isSubRecipe &&
+        unitBase(currentRecipe.batchYieldUnit) !== unitBase(input.batchYieldUnit)
+      ) {
+        const incompatibleLines = existingItems.filter(
+          (item) =>
+            item.kind === 'recipe' &&
+            item.referenceId === currentRecipeId &&
+            unitBase(item.unit) !== unitBase(input.batchYieldUnit),
+        );
+        if (incompatibleLines.length > 0) {
+          throw new RecipeUnitChangeInUseError(incompatibleLines.length);
+        }
+      }
       const graphWithoutCurrent = existingItems
         .filter((item) => item.kind === 'recipe' && item.recipeId !== currentRecipeId)
         .map((item) => ({ recipeId: item.recipeId, childRecipeId: item.referenceId }));

@@ -3,8 +3,10 @@ import { Decimal } from 'decimal.js';
 import {
   costPerUsableBaseUnit,
   quantityInBaseUnits,
-  UnitMismatchError,
+  FamilyMismatchError,
+  purchaseBaseUnit,
   type BaseUnit,
+  type ConversionUnit,
   type PurchaseUnit,
   type RecipeUnit,
   type RecipeUnitSizes,
@@ -13,7 +15,7 @@ import {
 } from './units';
 
 export interface IngredientConversionInput {
-  fromUnit: string;
+  fromUnit: ConversionUnit;
   baseQuantity: string;
   baseUnit: BaseUnit;
 }
@@ -71,6 +73,12 @@ export interface CostBreakdownLine {
   quantity: string;
   unit: RecipeUnit;
   costPerPortion: Decimal;
+  ingredientCalculation?: {
+    quantity: Decimal;
+    unit: BaseUnit;
+    costPerBaseUnit: Decimal;
+    lineCost: Decimal;
+  };
   subRecipeCalculation?: {
     quantity: Decimal;
     unit: BaseUnit;
@@ -124,6 +132,52 @@ export class InvalidPackagingOnSubRecipeError extends Error {
   }
 }
 
+function ingredientCostCalculation(
+  line: RecipeCostLine,
+  fractionDigits: number,
+  unitSizes: RecipeUnitSizes,
+) {
+  if (!line.ingredient) {
+    throw new MissingRecipeReferenceError();
+  }
+  const customConversion = line.ingredient.conversions.find(
+    (conversion) => conversion.fromUnit === line.unit,
+  );
+  const baseQuantity = quantityInBaseUnits(
+    line.quantity,
+    line.unit,
+    customConversion
+      ? { baseQuantity: customConversion.baseQuantity, baseUnit: customConversion.baseUnit }
+      : undefined,
+    unitSizes,
+  );
+  const purchaseConversion = line.ingredient.conversions.find(
+    (conversion) => conversion.fromUnit === line.ingredient?.purchaseUnit,
+  );
+  const ingredientBaseUnit = purchaseBaseUnit(
+    line.ingredient.purchaseUnit,
+    purchaseConversion,
+  );
+  if (ingredientBaseUnit !== baseQuantity.unit) {
+    throw new FamilyMismatchError(line.unit, line.ingredient.purchaseUnit);
+  }
+  const costPerBaseUnit = costPerUsableBaseUnit({
+    priceMinor: line.ingredient.purchasePriceMinor,
+    fractionDigits,
+    purchaseQuantity: line.ingredient.purchaseQuantity,
+    purchaseUnit: line.ingredient.purchaseUnit,
+    usableYieldPct: line.ingredient.usableYieldPct,
+    conversion: purchaseConversion,
+    unitSizes,
+  });
+  return {
+    quantity: baseQuantity.quantity,
+    unit: baseQuantity.unit,
+    costPerBaseUnit,
+    lineCost: costPerBaseUnit.mul(baseQuantity.quantity),
+  };
+}
+
 export function packagingCostPerPortion(
   lines: RecipePackagingCostLine[],
   channelId: string,
@@ -157,31 +211,7 @@ export function recipeItemCost(
   }
 
   if (line.kind === 'ingredient') {
-    if (!line.ingredient) {
-      throw new MissingRecipeReferenceError();
-    }
-    const customConversion = line.ingredient.conversions.find(
-      (conversion) => conversion.fromUnit === line.unit,
-    );
-    const baseQuantity = quantityInBaseUnits(
-      line.quantity,
-      line.unit,
-      customConversion
-        ? { baseQuantity: customConversion.baseQuantity, baseUnit: customConversion.baseUnit }
-        : undefined,
-      unitSizes,
-    );
-    const ingredientBaseUnit = quantityInBaseUnits('1', line.ingredient.purchaseUnit).unit;
-    if (ingredientBaseUnit !== baseQuantity.unit) {
-      throw new UnitMismatchError();
-    }
-    return costPerUsableBaseUnit({
-      priceMinor: line.ingredient.purchasePriceMinor,
-      fractionDigits,
-      purchaseQuantity: line.ingredient.purchaseQuantity,
-      purchaseUnit: line.ingredient.purchaseUnit,
-      usableYieldPct: line.ingredient.usableYieldPct,
-    }).mul(baseQuantity.quantity);
+    return ingredientCostCalculation(line, fractionDigits, unitSizes).lineCost;
   }
 
   if (!line.detail) {
@@ -203,7 +233,7 @@ export function recipeItemCost(
   const amount = quantityInBaseUnits(line.quantity, line.unit, undefined, unitSizes);
   const yieldUnit = quantityInBaseUnits('1', line.detail.batchYieldUnit, undefined, unitSizes).unit;
   if (amount.unit !== yieldUnit) {
-    throw new UnitMismatchError();
+    throw new FamilyMismatchError(line.unit, line.detail.batchYieldUnit);
   }
   return nestedCost.foodCostPerYieldUnit.mul(amount.quantity);
 }
@@ -285,6 +315,10 @@ function computeRecipeCost(
 
   const breakdown: CostBreakdownLine[] = recipe.items.map((line) => {
     const lineCost = recipeItemCost(line, fractionDigits, ancestry, wastePct, unitSizes);
+    const ingredientCalculation =
+      line.kind === 'ingredient'
+        ? ingredientCostCalculation(line, fractionDigits, unitSizes)
+        : undefined;
     const subRecipeCalculation =
       line.kind === 'recipe'
         ? (() => {
@@ -310,6 +344,7 @@ function computeRecipeCost(
       unit: line.unit,
       costPerPortion: (line.kind === 'ingredient' ? lineCost.mul(wasteFactor) : lineCost)
         .div(portions),
+      ingredientCalculation,
       subRecipeCalculation,
     };
   });

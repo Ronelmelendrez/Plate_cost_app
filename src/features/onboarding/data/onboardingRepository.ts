@@ -2,6 +2,7 @@ import { Decimal } from 'decimal.js';
 import { eq } from 'drizzle-orm';
 
 import type { AppDatabase } from '@core/db/client';
+import { quantityInBaseUnits } from '@core/costing/units';
 import {
   channels,
   globalSettings,
@@ -143,6 +144,15 @@ export async function saveOnboardingDish(
         priceMinor: row.priceMinor,
         purchaseQuantity: canonicalQuantity(row.template.purchaseQuantity),
         purchaseUnit: row.template.purchaseUnit,
+        purchaseBaseQuantity: quantityInBaseUnits(
+          canonicalQuantity(row.template.purchaseQuantity),
+          row.template.purchaseUnit,
+        ).quantity.toString(),
+        purchaseBaseUnit: quantityInBaseUnits(
+          canonicalQuantity(row.template.purchaseQuantity),
+          row.template.purchaseUnit,
+        ).unit,
+        usableYieldPct: '100',
         recordedAt: now,
       });
       ingredientItems.push({

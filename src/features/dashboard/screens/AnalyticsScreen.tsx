@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { currencyFractionDigits } from '@core/costing/money';
 import { createDrizzleClient } from '@core/db/client';
-import { getRecipeWorkspace } from '@features/recipes';
+import { getRecipeWorkspace } from '@features/recipes/data/recipeRepository';
 import { MarginDishRow } from '@features/dashboard/components/MarginDishRow';
 import {
   buildMarginDashboardRows,
@@ -110,18 +110,30 @@ export default function AnalyticsScreen() {
     : 2;
   const rowResult = useMemo(() => {
     if (!workspace || !selectedChannelId) {
-      return { rows: [] as MarginDashboardRow[], error: '' };
+      return {
+        rows: [] as MarginDashboardRow[],
+        invalidRecipes: [],
+        error: '',
+      };
     }
     try {
+      const calculation = buildMarginDashboardRows(
+        workspace,
+        selectedChannelId,
+        fractionDigits,
+      );
       return {
-        rows: sortMarginDashboardRows(
-          buildMarginDashboardRows(workspace, selectedChannelId, fractionDigits),
-        ),
+        rows: sortMarginDashboardRows(calculation.rows),
+        invalidRecipes: calculation.invalidRecipes,
         error: '',
       };
     } catch (calculationError) {
       console.error('Unable to calculate margin analytics.', calculationError);
-      return { rows: [] as MarginDashboardRow[], error: t('analytics.calculationError') };
+      return {
+        rows: [] as MarginDashboardRow[],
+        invalidRecipes: [],
+        error: t('analytics.calculationError'),
+      };
     }
   }, [fractionDigits, selectedChannelId, t, workspace]);
   const targetMargin = new Decimal(settings?.targetMarginPct ?? '65');
@@ -199,6 +211,24 @@ export default function AnalyticsScreen() {
           <Text accessibilityRole="alert" className="font-inter text-[14px] text-bad">
             {rowResult.error}
           </Text>
+        </View>
+      ) : null}
+      {rowResult.invalidRecipes.length > 0 ? (
+        <View className="gap-1 rounded-2xl border border-line bg-warnSoft p-3.5">
+          <Text className="font-inter-semibold text-[14px] leading-[20px] text-ink">
+            {t('dashboard.invalidUnitRecipes')}
+          </Text>
+          {rowResult.invalidRecipes.map((dish) => (
+            <Pressable
+              accessibilityRole="button"
+              key={dish.recipeId}
+              onPress={() => router.push(`/recipe/${dish.recipeId}`)}
+              className="min-h-11 justify-center">
+              <Text className="font-inter-semibold text-[14px] text-brand">
+                {t('dashboard.fixDishUnits', { name: dish.name })}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
 

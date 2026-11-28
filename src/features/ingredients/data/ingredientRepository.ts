@@ -1,12 +1,18 @@
-import { asc, desc, eq } from 'drizzle-orm';
+import { asc, desc, eq, inArray } from 'drizzle-orm';
 
 import type { AppDatabase } from '@core/db/client';
+import {
+  quantityInBaseUnits,
+  type BaseUnit,
+  type ConversionUnit,
+  type PurchaseUnit,
+} from '@core/costing/units';
 import { ingredientPriceHistory, ingredients, unitConversions } from '@core/db/schema';
-import type { BaseUnit, ConversionUnit, PurchaseUnit } from '@core/costing/units';
 
 export type Ingredient = typeof ingredients.$inferSelect;
 export type IngredientConversion = typeof unitConversions.$inferSelect;
 export type IngredientPriceRecord = typeof ingredientPriceHistory.$inferSelect;
+export type IngredientListItem = Ingredient & { conversions: IngredientConversion[] };
 
 export interface IngredientInput {
   id?: string;
@@ -32,9 +38,26 @@ export async function listIngredients(database: AppDatabase, searchTerm: string)
       asc(ingredients.name),
     );
   const search = searchTerm.trim().toLocaleLowerCase();
-  return search
+  const filtered = search
     ? found.filter((ingredient) => ingredient.name.toLocaleLowerCase().includes(search))
     : found;
+  if (filtered.length === 0) {
+    return [];
+  }
+  const conversions = await database
+    .select()
+    .from(unitConversions)
+    .where(inArray(unitConversions.ingredientId, filtered.map((ingredient) => ingredient.id)));
+  const conversionsByIngredient = new Map<string, IngredientConversion[]>();
+  for (const conversion of conversions) {
+    const rows = conversionsByIngredient.get(conversion.ingredientId) ?? [];
+    rows.push(conversion);
+    conversionsByIngredient.set(conversion.ingredientId, rows);
+  }
+  return filtered.map((ingredient) => ({
+    ...ingredient,
+    conversions: conversionsByIngredient.get(ingredient.id) ?? [],
+  }));
 }
 
 export async function getIngredient(database: AppDatabase, id: string) {
@@ -64,6 +87,23 @@ export async function getIngredientPriceHistory(database: AppDatabase, id: strin
 
 export async function saveIngredient(database: AppDatabase, input: IngredientInput) {
   const now = new Date().toISOString();
+  const purchaseConversion = input.conversions.find(
+    (conversion) => conversion.fromUnit === input.purchaseUnit,
+  );
+  const purchaseBaseAmount = quantityInBaseUnits(
+    input.purchaseQuantity,
+    input.purchaseUnit,
+    purchaseConversion,
+  );
+  const priceHistoryValues = {
+    priceMinor: input.purchasePriceMinor,
+    purchaseQuantity: input.purchaseQuantity,
+    purchaseUnit: input.purchaseUnit,
+    purchaseBaseQuantity: purchaseBaseAmount.quantity.toString(),
+    purchaseBaseUnit: purchaseBaseAmount.unit,
+    usableYieldPct: input.usableYieldPct,
+    recordedAt: now,
+  };
   return database.transaction(async (transaction) => {
     let ingredientId: string;
     const updatedValues = {
@@ -86,6 +126,20 @@ export async function saveIngredient(database: AppDatabase, input: IngredientInp
       if (!previous) {
         throw new Error('Ingredient no longer exists.');
       }
+      const previousConversions = await transaction
+        .select()
+        .from(unitConversions)
+        .where(eq(unitConversions.ingredientId, ingredientId));
+      const previousPurchaseConversion = previousConversions.find(
+        (conversion) => conversion.fromUnit === previous.purchaseUnit,
+      );
+      const currentPurchaseConversion = input.conversions.find(
+        (conversion) => conversion.fromUnit === input.purchaseUnit,
+      );
+      const purchaseConversionChanged =
+        previous.purchaseUnit === input.purchaseUnit &&
+        JSON.stringify(previousPurchaseConversion ?? null) !==
+          JSON.stringify(currentPurchaseConversion ?? null);
 
       await transaction
         .update(ingredients)
@@ -95,14 +149,13 @@ export async function saveIngredient(database: AppDatabase, input: IngredientInp
       if (
         previous.purchasePriceMinor !== input.purchasePriceMinor ||
         previous.purchaseQuantity !== input.purchaseQuantity ||
-        previous.purchaseUnit !== input.purchaseUnit
+        previous.purchaseUnit !== input.purchaseUnit ||
+        previous.usableYieldPct !== input.usableYieldPct ||
+        purchaseConversionChanged
       ) {
         await transaction.insert(ingredientPriceHistory).values({
           ingredientId,
-          priceMinor: input.purchasePriceMinor,
-          purchaseQuantity: input.purchaseQuantity,
-          purchaseUnit: input.purchaseUnit,
-          recordedAt: now,
+          ...priceHistoryValues,
         });
       }
     } else {
@@ -113,10 +166,7 @@ export async function saveIngredient(database: AppDatabase, input: IngredientInp
       ingredientId = created.id;
       await transaction.insert(ingredientPriceHistory).values({
         ingredientId,
-        priceMinor: input.purchasePriceMinor,
-        purchaseQuantity: input.purchaseQuantity,
-        purchaseUnit: input.purchaseUnit,
-        recordedAt: now,
+        ...priceHistoryValues,
       });
     }
 
